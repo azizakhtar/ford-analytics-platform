@@ -82,7 +82,7 @@ def main():
     # Logo and title in sidebar
     col1, col2 = st.sidebar.columns([1, 2])
     with col1:
-        st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent.png", width=50)
+        st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent2.png", width=50)
     with col2:
         st.markdown("### Ford Analytics")
     
