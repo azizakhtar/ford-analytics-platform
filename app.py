@@ -49,8 +49,10 @@ if page == "📊 Dashboard":
 
 elif page == "💬 SQL Chat":
     # ========== PASTE YOUR ENTIRE 2_SQL_Chat.py CODE HERE ==========
-st.title("Intelligent SQL Generator")
-st.markdown("**Natural Language to SQL** - Describe your analysis in plain English")
+    # EVERYTHING MUST BE INDENTED UNDER THIS ELIF
+    
+    st.title("Intelligent SQL Generator")
+    st.markdown("**Natural Language to SQL** - Describe your analysis in plain English")
 
 class SchemaManager:
     def __init__(self, client):
