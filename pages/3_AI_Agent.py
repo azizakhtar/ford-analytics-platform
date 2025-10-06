@@ -1,17 +1,22 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
+import time
+from datetime import datetime, timedelta
 from google.cloud import bigquery
 from google.oauth2 import service_account
-from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score
+from sklearn.cluster import KMeans
+from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+import scipy.stats as stats
 
-st.set_page_config(page_title="AI Agent", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="AI Agent", layout="wide")
 
 def get_bigquery_client():
     try:
@@ -31,9 +36,64 @@ def get_bigquery_client():
 
 client = get_bigquery_client()
 
-class BusinessAnalyst:
+st.title("AI Business Strategy Testing System")
+st.markdown("**Manager Agent** discovers strategies **Analyst Agent** creates tests & models")
+
+class SchemaDiscoverer:
     def __init__(self, client):
         self.client = client
+        self.schemas = {}
+    
+    def discover_table_schemas(self):
+        tables = [
+            'customer_profiles', 'loan_originations', 'consumer_sales', 
+            'billing_payments', 'fleet_sales', 'customer_service', 'vehicle_telemetry'
+        ]
+        
+        for table in tables:
+            try:
+                query = f"""
+                SELECT column_name, data_type 
+                FROM `ford-assessment-100425.ford_credit_raw.INFORMATION_SCHEMA.COLUMNS`
+                WHERE table_name = '{table}'
+                ORDER BY ordinal_position
+                """
+                query_job = self.client.query(query)
+                schema_df = query_job.to_dataframe()
+                self.schemas[table] = {
+                    'columns': schema_df['column_name'].tolist(),
+                    'data_types': schema_df.set_index('column_name')['data_type'].to_dict()
+                }
+            except Exception as e:
+                st.warning(f"Could not discover schema for {table}: {e}")
+        
+        return self.schemas
+
+class StrategyManager:
+    def __init__(self, schema_discoverer):
+        self.schema_discoverer = schema_discoverer
+    
+    def discover_business_strategies(self, data_patterns):
+        strategies = []
+        
+        # Always generate these core strategies that we know we can test
+        strategies.extend([
+            "Test 2% APR reduction for Gold-tier customers",
+            "Implement reactivation campaign for inactive customers",
+            "Create bundled product offering for high-value segments",
+            "Launch targeted upselling campaign for medium-tier customers",
+            "Optimize loan approval rates for Silver-tier customers",
+            "Develop loyalty program for repeat customers",
+            "Create seasonal promotion for Q4 sales boost",
+            "Implement risk-based pricing for different credit tiers"
+        ])
+        
+        return strategies[:8]
+
+class BusinessAnalyst:
+    def __init__(self, client, schema_discoverer):
+        self.client = client
+        self.schema_discoverer = schema_discoverer
     
     def execute_query(self, query):
         try:
@@ -62,7 +122,7 @@ class BusinessAnalyst:
                 COUNT(cs.vin) as transaction_count,
                 SUM(cs.sale_price) as total_spend,
                 AVG(cs.sale_price) as avg_transaction_value
-            FROM `ford-assessment-100425.ford_credit_curated.customer_360_view` cp
+            FROM `ford-assessment-100425.ford_credit_raw.customer_profiles` cp
             LEFT JOIN `ford-assessment-100425.ford_credit_raw.consumer_sales` cs
                 ON cp.customer_id = cs.customer_id
             GROUP BY cp.customer_id, cp.credit_tier
@@ -151,7 +211,10 @@ class BusinessAnalyst:
 class BusinessStrategyTestingSystem:
     def __init__(self, client):
         self.client = client
-        self.business_analyst = BusinessAnalyst(client)
+        self.schema_discoverer = SchemaDiscoverer(client)
+        self.schemas = self.schema_discoverer.discover_table_schemas()
+        self.strategy_manager = StrategyManager(self.schema_discoverer)
+        self.business_analyst = BusinessAnalyst(client, self.schema_discoverer)
         self.setup_state()
     
     def setup_state(self):
@@ -162,17 +225,21 @@ class BusinessStrategyTestingSystem:
         if 'current_strategy' not in st.session_state:
             st.session_state.current_strategy = None
     
+    def discover_initial_patterns(self):
+        patterns = []
+        
+        if 'customer_profiles' in self.schemas:
+            query = "SELECT credit_tier, COUNT(*) as count FROM `ford-assessment-100425.ford_credit_raw.customer_profiles` GROUP BY credit_tier"
+            df = self.business_analyst.execute_query(query)
+            if not df.empty:
+                largest = df.loc[df['count'].idxmax()]
+                patterns.append(f"Customer base dominated by {largest['credit_tier']} tier ({largest['count']} customers)")
+        
+        return patterns
+    
     def generate_business_strategies(self):
-        strategies = [
-            "Test 2% APR reduction for Gold-tier customers",
-            "Implement reactivation campaign for inactive customers",
-            "Create bundled product offering for high-value segments",
-            "Launch targeted upselling campaign for medium-tier customers",
-            "Optimize loan approval rates for Silver-tier customers",
-            "Develop loyalty program for repeat customers",
-            "Create seasonal promotion for Q4 sales boost",
-            "Implement risk-based pricing for different credit tiers"
-        ]
+        patterns = self.discover_initial_patterns()
+        strategies = self.strategy_manager.discover_business_strategies(patterns)
         st.session_state.strategies_generated = strategies
         return strategies
     
@@ -207,9 +274,6 @@ class BusinessStrategyTestingSystem:
                 st.pyplot(viz)
     
     def render_system_interface(self):
-        st.title("🧠 AI Business Strategy Testing System")
-        st.markdown("**Manager Agent** discovers strategies **Analyst Agent** creates tests & models")
-        
         st.sidebar.header("Business Strategy Testing System")
         
         if st.sidebar.button("Generate Business Strategies", type="primary"):
@@ -236,11 +300,11 @@ class BusinessStrategyTestingSystem:
                 self.display_strategy_test_report(st.session_state.test_results[strategy])
         
         else:
-            st.info("👆 Click 'Generate Business Strategies' to start the AI analysis")
+            st.info("Click 'Generate Business Strategies' to start the AI analysis")
 
 # Main execution
 if not client:
-    st.error("❌ BigQuery connection required for AI Agent")
+    st.error("BigQuery connection required for AI Agent")
     st.info("Please check your BigQuery credentials")
 else:
     system = BusinessStrategyTestingSystem(client)
