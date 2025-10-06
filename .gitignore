@@ -1,0 +1,14 @@
+# .gitignore
+.env
+*.json
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env/
+.venv/
+venv/
+ENV/
+.env.local
+.streamlit/secrets.toml
