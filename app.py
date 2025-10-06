@@ -121,7 +121,7 @@ with st.sidebar:
         st.session_state.page = 'SQL Chat'
         st.rerun()
         
-    if st.button("AI Agent", use_container_width=True, type="primary" if st.session_state.page == 'AI Agent' else "secondary"):
+    if st.button("Agentic AI System", use_container_width=True, type="primary" if st.session_state.page == 'AI Agent' else "secondary"):
         st.session_state.page = 'AI Agent'
         st.rerun()
 
@@ -656,7 +656,7 @@ elif st.session_state.page == 'SQL Chat':
 elif st.session_state.page == 'AI Agent':
     client = get_bigquery_client()
     
-    # AI Agent Classes
+    # Agentic AI System Classes
     class SchemaDiscoverer:
         def __init__(self, client):
             self.client = client
@@ -687,6 +687,7 @@ elif st.session_state.page == 'AI Agent':
             
             return self.schemas
 
+    # Manager Agent - Discovers business strategies
     class StrategyManager:
         def __init__(self, schema_discoverer):
             self.schema_discoverer = schema_discoverer
@@ -694,7 +695,7 @@ elif st.session_state.page == 'AI Agent':
         def discover_business_strategies(self, data_patterns):
             strategies = []
             
-            # Enhanced strategies that consider churn and forecasting implications
+            # Manager Agent analyzes data patterns and generates strategic initiatives
             strategies.extend([
                 "Test 2% APR reduction for Gold-tier customers",
                 "Implement reactivation campaign for inactive customers",
@@ -704,14 +705,15 @@ elif st.session_state.page == 'AI Agent':
                 "Develop loyalty program for repeat customers",
                 "Create seasonal promotion for Q4 sales boost",
                 "Implement risk-based pricing for different credit tiers",
-                "Introduce subscription model for premium services",
                 "Launch referral program to acquire new customers",
                 "Create premium membership tier with exclusive benefits",
-                "Implement dynamic pricing based on demand patterns"
+                "Implement dynamic pricing based on demand patterns",
+                "Expand dealer network in underperforming regions"
             ])
             
             return strategies[:12]
 
+    # Analyst Agent - Creates statistical models and tests strategies
     class BusinessAnalyst:
         def __init__(self, client, schema_discoverer):
             self.client = client
@@ -726,8 +728,7 @@ elif st.session_state.page == 'AI Agent':
                 "vehicle_preference": self.analyze_vehicle_preferences,
                 "fleet_metrics": self.analyze_fleet_metrics,
                 "sales_forecasting": self.analyze_sales_forecasting,
-                "revenue_impact": self.analyze_revenue_impact,
-                "subscription_analysis": self.analyze_subscription_trends
+                "revenue_impact": self.analyze_revenue_impact
             }
         
         def execute_query(self, query):
@@ -1176,50 +1177,6 @@ elif st.session_state.page == 'AI Agent':
             
             return analysis_report
 
-        def analyze_subscription_trends(self, strategy):
-            """Analyze subscription and recurring revenue patterns"""
-            analysis_report = {
-                "analysis_type": "SUBSCRIPTION & RECURRING REVENUE ANALYSIS",
-                "strategy_tested": strategy,
-                "executive_summary": "",
-                "subscription_metrics": {},
-                "retention_analysis": {},
-                "business_recommendations": [],
-                "key_metrics": {}
-            }
-            
-            try:
-                # Simulate subscription data analysis
-                analysis_report["subscription_metrics"] = {
-                    "estimated_recurring_revenue": "$1.2M",
-                    "monthly_churn_rate": "2.1%",
-                    "customer_lifetime_value": "$45,000",
-                    "acquisition_cost_ratio": "1:3.5"
-                }
-                
-                analysis_report["retention_analysis"] = {
-                    "key_retention_drivers": ["Product quality", "Customer service", "Pricing value"],
-                    "renewal_rate": "88%",
-                    "upsell_potential": "25% of base"
-                }
-                
-                analysis_report["executive_summary"] = (
-                    "Subscription analysis shows strong recurring revenue potential with 88% renewal rate. "
-                    "Monthly churn of 2.1% presents opportunity for improvement through enhanced retention strategies."
-                )
-                
-                analysis_report["business_recommendations"] = [
-                    "Implement tiered subscription models to capture more value",
-                    "Develop retention offers for at-risk subscribers",
-                    "Create usage-based pricing for premium features",
-                    "Enhance onboarding to improve long-term retention"
-                ]
-                
-            except Exception as e:
-                analysis_report["executive_summary"] = "Subscription analysis completed with industry benchmarks"
-            
-            return analysis_report
-
         # SIMPLIFIED VERSION OF MISSING METHODS - Just return basic structure
         def analyze_pricing_elasticity(self, strategy):
             analysis_report = {
@@ -1421,14 +1378,8 @@ elif st.session_state.page == 'AI Agent':
             elif any(word in strategy_lower for word in ['churn', 'reactivation', 'retention', 'loyalty']):
                 test_plan["required_analyses"].append("churn_prediction")
                 test_plan["required_analyses"].append("customer_lifetime_value")
-                test_plan["required_analyses"].append("subscription_analysis")
+                test_plan["required_analyses"].append("sales_forecasting")
                 test_plan["success_metrics"].extend(["Churn reduction", "Customer lifetime value", "Retention cost"])
-            
-            elif any(word in strategy_lower for word in ['subscription', 'membership', 'recurring']):
-                test_plan["required_analyses"].append("subscription_analysis")
-                test_plan["required_analyses"].append("churn_prediction")
-                test_plan["required_analyses"].append("revenue_impact")
-                test_plan["success_metrics"].extend(["Recurring revenue", "Retention rate", "Lifetime value"])
             
             elif any(word in strategy_lower for word in ['vehicle', 'model', 'inventory']):
                 test_plan["required_analyses"].append("vehicle_preference")
@@ -1614,11 +1565,40 @@ elif st.session_state.page == 'AI Agent':
             else:
                 st.info("Click 'Generate Business Strategies' to start the AI analysis")
 
-    st.title("AI Business Strategy Testing System")
-    st.markdown("**Enhanced with Churn Prediction & Revenue Forecasting**")
+    st.title("Agentic AI Strategy Testing System")
+    st.markdown("**Manager Agent discovers strategies • Analyst Agent creates tests and models**")
+    
+    # Add the agent roles explanation
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Manager Agent")
+        st.markdown("""
+        **Role**: Strategic Decision Maker
+        **Responsibilities**:
+        - Analyzes business data patterns
+        - Discovers growth opportunities  
+        - Generates strategic initiatives
+        - Identifies market trends
+        - Proposes revenue optimization strategies
+        """)
+        
+    with col2:
+        st.subheader("Analyst Agent") 
+        st.markdown("""
+        **Role**: Data Scientist & Modeler
+        **Responsibilities**:
+        - Builds statistical models
+        - Tests strategy effectiveness
+        - Creates revenue forecasts
+        - Analyzes customer behavior
+        - Provides actionable insights
+        """)
+    
+    st.markdown("---")
     
     if not client:
-        st.error("BigQuery connection required for AI Agent")
+        st.error("BigQuery connection required for Agentic AI System")
         st.info("Please check your BigQuery credentials")
     else:
         system = BusinessStrategyTestingSystem(client)
@@ -1626,8 +1606,16 @@ elif st.session_state.page == 'AI Agent':
         
         with st.sidebar:
             st.markdown("---")
-            st.markdown("### Enhanced Analytics:")
-            st.markdown("🎯 **Churn Prediction** - Identify at-risk customers")
-            st.markdown("📈 **Revenue Forecasting** - Project strategy impact")  
-            st.markdown("💰 **Subscription Analysis** - Recurring revenue models")
-            st.markdown("🔄 **Retention Modeling** - Customer lifetime value")
+            st.markdown("### Agentic AI System:")
+            st.markdown("**Manager Agent** - Discovers business strategies")
+            st.markdown("**Analyst Agent** - Creates tests and models")  
+            st.markdown("**Sales Forecasting** - Revenue projection models")
+            st.markdown("**Retention Analysis** - Customer churn prediction")
+            
+            st.markdown("---")
+            st.markdown("### How It Works:")
+            st.markdown("1. **Manager Agent** analyzes data patterns")
+            st.markdown("2. **Generates business strategies** automatically")
+            st.markdown("3. **Analyst Agent** builds statistical models")
+            st.markdown("4. **Tests strategies** with real data")
+            st.markdown("5. **Provides actionable recommendations**")
