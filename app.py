@@ -1,17 +1,27 @@
 import streamlit as st
 import hmac
+import os
 
 def check_password():
+    # Try multiple ways to get the password
     try:
+        # Method 1: Streamlit secrets
         correct_password = st.secrets["password"]
     except:
-        st.error("Please set password in Streamlit secrets")
-        return False
+        try:
+            # Method 2: Environment variable
+            correct_password = os.environ.get("APP_PASSWORD", "ford2024")
+        except:
+            # Method 3: Hardcoded fallback
+            correct_password = "ford2024"
     
     if "password_correct" in st.session_state and st.session_state["password_correct"]:
         return True
         
-    pwd = st.text_input("Password", type="password")
+    st.title("🔐 Ford Analytics Portal")
+    st.markdown("### Enter the access password")
+    pwd = st.text_input("Password", type="password", key="password_input")
+    
     if st.button("Login"):
         if hmac.compare_digest(pwd, correct_password):
             st.session_state["password_correct"] = True
@@ -26,7 +36,7 @@ if not check_password():
 # Main app
 st.set_page_config(page_title="Ford Analytics", page_icon="🚗", layout="wide")
 st.title("🚗 Ford Analytics Platform")
-st.success("Access granted!")
+st.success("✅ Access granted! Welcome to Ford Analytics.")
 
 col1, col2, col3 = st.columns(3)
 with col1:
