@@ -5,7 +5,7 @@ import re
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-st.set_page_config(page_title="SQL Chat", page_icon="💬", layout="wide")
+st.set_page_config(page_title="SQL Chat", layout="wide")
 
 def get_bigquery_client():
     try:
@@ -234,7 +234,7 @@ class SQLGeneratorApp:
             return pd.DataFrame()
     
     def render_interface(self):
-        st.title("🤖 Intelligent SQL Generator")
+        st.title("Intelligent SQL Generator")
         st.markdown("**Natural Language to SQL** - Describe your analysis in plain English")
         
         st.sidebar.header("Quick Analysis Templates")
@@ -298,7 +298,7 @@ class SQLGeneratorApp:
 
 # Main execution
 if not client:
-    st.error("❌ BigQuery connection required for SQL Chat")
+    st.error("BigQuery connection required for SQL Chat")
     st.info("Please check your BigQuery credentials")
 else:
     sql_app = SQLGeneratorApp(client)
