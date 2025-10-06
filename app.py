@@ -92,26 +92,26 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.radio(
         "Go to:",
-        ["📊 Dashboard", "💬 SQL Chat", "🤖 AI Agent"],
+        ["Dashboard", "SQL Chat", "AI Agent"],
         index=0
     )
     
     # Store current page in session state
     if 'current_page' not in st.session_state:
-        st.session_state.current_page = "📊 Dashboard"
+        st.session_state.current_page = "Dashboard"
     
     if page != st.session_state.current_page:
         st.session_state.current_page = page
         st.rerun()
     
     # Load the appropriate page
-    if st.session_state.current_page == "📊 Dashboard":
+    if st.session_state.current_page == "Dashboard":
         import dashboard
         dashboard.main()
-    elif st.session_state.current_page == "💬 SQL Chat":
+    elif st.session_state.current_page == "SQL Chat":
         import sql_chat
         sql_chat.main()
-    elif st.session_state.current_page == "🤖 AI Agent":
+    elif st.session_state.current_page == "AI Agent":
         import ai_agent
         ai_agent.main()
 
