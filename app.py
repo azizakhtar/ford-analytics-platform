@@ -1829,7 +1829,9 @@ elif st.session_state.page == 'AI Agent':
                         self.test_business_strategy(strategy)
                         st.rerun()
                 else:
-                    self.display_strategy_test_report(st.session_state.test_results[strategy])
+                    # FIX: Access the strategy from the test_results correctly
+                    test_result_data = st.session_state.test_results[strategy]
+                    self.display_strategy_test_report(test_result_data)
             
             else:
                 st.info("Click 'Generate Business Strategies' to start the AI analysis")
