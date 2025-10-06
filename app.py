@@ -1,6 +1,23 @@
 import streamlit as st
 import hmac
 import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from google.cloud import bigquery
+from google.oauth2 import service_account
+import re
+from sklearn.cluster import KMeans
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+import scipy.stats as stats
+from datetime import datetime, timedelta
+import json
 
 # Page config MUST be first
 st.set_page_config(page_title="Ford Analytics", page_icon="🚗", layout="wide")
@@ -29,30 +46,7 @@ def check_password():
 if not check_password():
     st.stop()
 
-# MANUAL NAVIGATION
-st.sidebar.title("🚗 Ford Analytics")
-page = st.sidebar.radio("Navigate to:", 
-    ["📊 Dashboard", "💬 SQL Chat", "🤖 AI Agent"])
-
-if page == "📊 Dashboard":
-    st.title("Ford Analytics Dashboard")
-    st.markdown("Comprehensive overview of fleet performance")
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Revenue", "$4.2M", "+12%")
-    col2.metric("Active Loans", "1,847", "+8%")
-    col3.metric("Delinquency Rate", "2.3%", "-0.4%")
-    col4.metric("Customer Satisfaction", "4.2/5", "+0.3")
-
-    st.markdown("---")
-    st.info("Use the SQL Chat page for detailed data queries")
-
-elif page == "💬 SQL Chat":
-    # ========== PASTE YOUR ENTIRE 2_SQL_Chat.py CODE HERE ==========
-    # EVERYTHING MUST BE INDENTED UNDER THIS ELIF
-    
-    st.title("Intelligent SQL Generator")
-    st.markdown("**Natural Language to SQL** - Describe your analysis in plain English")
+# ========== SQL CHAT COMPONENTS ==========
 
 class SchemaManager:
     def __init__(self, client):
@@ -259,7 +253,7 @@ class IntelligentSQLGenerator:
         # Fallback for simple queries
         elif 'show me' in nl_lower or 'list' in nl_lower:
             table = self._guess_table(nl_lower)
-            if table == 'customer_profiles':
+            if table == 'customer_360_view':
                 table_ref = 'ford_credit_curated.customer_360_view'
             else:
                 table_ref = f'ford_credit_raw.{table}'
@@ -277,7 +271,7 @@ class IntelligentSQLGenerator:
         """Guess the most relevant table based on keywords"""
         query_lower = query.lower()
         if any(word in query_lower for word in ['customer', 'client', 'user']):
-            return 'customer_profiles'
+            return 'customer_360_view'
         elif any(word in query_lower for word in ['sale', 'purchase', 'transaction']):
             return 'consumer_sales'
         elif any(word in query_lower for word in ['payment', 'billing']):
@@ -301,7 +295,7 @@ class IntelligentSQLGenerator:
         if any(word in query for word in ['average', 'count', 'sum', 'total', 'number']):
             numeric_cols = self._get_numeric_columns(table)
             if numeric_cols:
-                if table == 'customer_profiles':
+                if table == 'customer_360_view':
                     table_ref = 'ford_credit_curated.customer_360_view'
                 else:
                     table_ref = f'ford_credit_raw.{table}'
@@ -311,7 +305,7 @@ class IntelligentSQLGenerator:
                 """
         
         # Simple select with limit
-        if table == 'customer_profiles':
+        if table == 'customer_360_view':
             table_ref = 'ford_credit_curated.customer_360_view'
         else:
             table_ref = f'ford_credit_raw.{table}'
@@ -471,8 +465,10 @@ class SQLGeneratorApp:
     
     def setup_services(self):
         try:
-            credentials = service_account.Credentials.from_service_account_file(
-                'ford-credit-key.json',
+            # Use Streamlit secrets for BigQuery connection
+            service_account_info = st.secrets["GCP_SERVICE_ACCOUNT_KEY"]
+            credentials = service_account.Credentials.from_service_account_info(
+                service_account_info,
                 scopes=["https://www.googleapis.com/auth/cloud-platform"],
             )
             self.client = bigquery.Client(
@@ -481,15 +477,23 @@ class SQLGeneratorApp:
             )
         except Exception as e:
             st.error(f"Database connection failed: {e}")
+            self.client = None
     
     def execute_query(self, query):
         try:
-            return pd.read_gbq(query, project_id="ford-assessment-100425")
+            if self.client:
+                return pd.read_gbq(query, project_id="ford-assessment-100425")
+            else:
+                st.error("No database connection available")
+                return pd.DataFrame()
         except Exception as e:
             st.error(f"Query execution failed: {e}")
             return pd.DataFrame()
     
     def render_interface(self):
+        st.title("🤖 Intelligent SQL Generator")
+        st.markdown("**Natural Language to SQL** - Describe your analysis in plain English")
+        
         st.sidebar.header("Quick Analysis Templates")
         
         template_options = {
@@ -632,16 +636,7 @@ class SQLGeneratorApp:
                     st.session_state.natural_language_query = example
                     st.rerun()
 
-if __name__ == "__main__":
-    app = SQLGeneratorApp()
-    app.render_interface()
-    
-elif page == "🤖 AI Agent":
-    # ========== PASTE YOUR ENTIRE 3_AI_Agent.py CODE HERE ==========
-    load_dotenv('key.env')
-
-st.title("AI Business Strategy Testing System")
-st.markdown("**Manager Agent** discovers strategies **Analyst Agent** creates tests & models")
+# ========== AI AGENT COMPONENTS ==========
 
 class SchemaDiscoverer:
     def __init__(self, client):
@@ -650,15 +645,20 @@ class SchemaDiscoverer:
     
     def discover_table_schemas(self):
         tables = [
-            'customer_profiles', 'loan_originations', 'consumer_sales', 
+            'customer_360_view', 'loan_originations', 'consumer_sales', 
             'billing_payments', 'fleet_sales', 'customer_service', 'vehicle_telemetry'
         ]
         
         for table in tables:
             try:
+                if table == 'customer_360_view':
+                    dataset = 'ford_credit_curated'
+                else:
+                    dataset = 'ford_credit_raw'
+                    
                 query = f"""
                 SELECT column_name, data_type 
-                FROM `ford-assessment-100425.ford_credit_raw.INFORMATION_SCHEMA.COLUMNS`
+                FROM `ford-assessment-100425.{dataset}.INFORMATION_SCHEMA.COLUMNS`
                 WHERE table_name = '{table}'
                 ORDER BY ordinal_position
                 """
@@ -885,7 +885,7 @@ class BusinessAnalyst:
                 COUNT(cs.vin) as transaction_count,
                 SUM(cs.sale_price) as total_spend,
                 AVG(cs.sale_price) as avg_transaction_value
-            FROM `ford-assessment-100425.ford_credit_raw.customer_profiles` cp
+            FROM `ford-assessment-100425.ford_credit_curated.customer_360_view` cp
             LEFT JOIN `ford-assessment-100425.ford_credit_raw.consumer_sales` cs
                 ON cp.customer_id = cs.customer_id
             GROUP BY cp.customer_id, cp.credit_tier
@@ -973,7 +973,7 @@ class BusinessAnalyst:
                 COUNT(cs.vin) as recent_transactions,
                 MAX(cs.sale_timestamp) as last_purchase_date,
                 DATE_DIFF(CURRENT_DATE(), DATE(MAX(cs.sale_timestamp)), DAY) as days_since_last_purchase
-            FROM `ford-assessment-100425.ford_credit_raw.customer_profiles` cp
+            FROM `ford-assessment-100425.ford_credit_curated.customer_360_view` cp
             LEFT JOIN `ford-assessment-100425.ford_credit_raw.consumer_sales` cs
                 ON cp.customer_id = cs.customer_id
             GROUP BY cp.customer_id
@@ -1048,7 +1048,7 @@ class BusinessAnalyst:
                 COUNT(cs.vin) as transaction_count,
                 SUM(cs.sale_price) as total_spend,
                 AVG(cs.sale_price) as avg_transaction_value
-            FROM `ford-assessment-100425.ford_credit_raw.customer_profiles` cp
+            FROM `ford-assessment-100425.ford_credit_curated.customer_360_view` cp
             LEFT JOIN `ford-assessment-100425.ford_credit_raw.consumer_sales` cs
                 ON cp.customer_id = cs.customer_id
             GROUP BY cp.customer_id, cp.credit_tier
@@ -1289,7 +1289,7 @@ class BusinessAnalyst:
                 COUNT(DISTINCT cp.customer_id) as customer_count,
                 COUNT(cs.vin) as sales_count,
                 AVG(cs.sale_price) as avg_sale_price
-            FROM `ford-assessment-100425.ford_credit_raw.customer_profiles` cp
+            FROM `ford-assessment-100425.ford_credit_curated.customer_360_view` cp
             LEFT JOIN `ford-assessment-100425.ford_credit_raw.consumer_sales` cs
                 ON cp.customer_id = cs.customer_id
             WHERE cp.state IS NOT NULL
@@ -1744,8 +1744,10 @@ class BusinessStrategyTestingSystem:
     
     def setup_services(self):
         try:
-            credentials = service_account.Credentials.from_service_account_file(
-                'ford-credit-key.json',
+            # Use Streamlit secrets for BigQuery connection
+            service_account_info = st.secrets["GCP_SERVICE_ACCOUNT_KEY"]
+            credentials = service_account.Credentials.from_service_account_info(
+                service_account_info,
                 scopes=["https://www.googleapis.com/auth/cloud-platform"],
             )
             self.client = bigquery.Client(
@@ -1754,12 +1756,13 @@ class BusinessStrategyTestingSystem:
             )
         except Exception as e:
             st.error(f"Database connection failed: {e}")
+            self.client = None
     
     def discover_initial_patterns(self):
         patterns = []
         
-        if 'customer_profiles' in self.schemas:
-            query = "SELECT credit_tier, COUNT(*) as count FROM `ford-assessment-100425.ford_credit_raw.customer_profiles` GROUP BY credit_tier"
+        if 'customer_360_view' in self.schemas:
+            query = "SELECT credit_tier, COUNT(*) as count FROM `ford-assessment-100425.ford_credit_curated.customer_360_view` GROUP BY credit_tier"
             df = self.business_analyst.execute_query(query)
             if not df.empty:
                 largest = df.loc[df['count'].idxmax()]
@@ -1824,7 +1827,7 @@ class BusinessStrategyTestingSystem:
         # Display visualizations with explanations
         if any('visualizations' in result for result in test_results['analysis_results'].values()):
             with st.expander("Charts & Models"):
-                for analysis_type, result in test_results['analysis_results'].items():
+                for analysis_type, result in test_results['analysis_results'].values():
                     if result.get('visualizations'):
                         st.subheader(f"{analysis_type.replace('_', ' ').title()} Visualization")
                         for viz in result['visualizations']:
@@ -1835,6 +1838,9 @@ class BusinessStrategyTestingSystem:
                                 st.pyplot(viz)
     
     def render_system_interface(self):
+        st.title("🧠 AI Business Strategy Testing System")
+        st.markdown("**Manager Agent** discovers strategies **Analyst Agent** creates tests & models")
+        
         st.sidebar.header("Business Strategy Testing System")
         
         if st.sidebar.button("Generate Business Strategies", type="primary"):
@@ -1863,20 +1869,48 @@ class BusinessStrategyTestingSystem:
         else:
             st.info("👆 Click 'Generate Business Strategies' to start the AI analysis")
 
-# Initialize and run the system
-try:
-    system = BusinessStrategyTestingSystem()
-    system.render_system_interface()
-    
-    with st.sidebar:
-        st.markdown("---")
-        st.markdown("### How It Works:")
-        st.markdown("1. **Manager Agent** analyzes data patterns")
-        st.markdown("2. **Generates business strategies**")
-        st.markdown("3. **Analyst Agent** builds statistical models")
-        st.markdown("4. **Tests strategies** with real data")
-        st.markdown("5. **Provides actionable recommendations**")
+# ========== MAIN APPLICATION ==========
+
+# MANUAL NAVIGATION
+st.sidebar.title("🚗 Ford Analytics")
+page = st.sidebar.radio("Navigate to:", 
+    ["📊 Dashboard", "💬 SQL Chat", "🤖 AI Agent"])
+
+if page == "📊 Dashboard":
+    st.title("Ford Analytics Dashboard")
+    st.markdown("Comprehensive overview of fleet performance")
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Revenue", "$4.2M", "+12%")
+    col2.metric("Active Loans", "1,847", "+8%")
+    col3.metric("Delinquency Rate", "2.3%", "-0.4%")
+    col4.metric("Customer Satisfaction", "4.2/5", "+0.3")
+
+    st.markdown("---")
+    st.info("Use the SQL Chat page for detailed data queries")
+
+elif page == "💬 SQL Chat":
+    try:
+        sql_app = SQLGeneratorApp()
+        sql_app.render_interface()
+    except Exception as e:
+        st.error(f"SQL Chat initialization failed: {e}")
+        st.info("Please check your BigQuery credentials and connection")
+
+elif page == "🤖 AI Agent":
+    try:
+        system = BusinessStrategyTestingSystem()
+        system.render_system_interface()
         
-except Exception as e:
-    st.error(f"System initialization failed: {e}")
-    st.info("Please check your BigQuery credentials and connection")
+        with st.sidebar:
+            st.markdown("---")
+            st.markdown("### How It Works:")
+            st.markdown("1. **Manager Agent** analyzes data patterns")
+            st.markdown("2. **Generates business strategies**")
+            st.markdown("3. **Analyst Agent** builds statistical models")
+            st.markdown("4. **Tests strategies** with real data")
+            st.markdown("5. **Provides actionable recommendations**")
+            
+    except Exception as e:
+        st.error(f"AI Agent initialization failed: {e}")
+        st.info("Please check your BigQuery credentials and connection")
