@@ -811,6 +811,7 @@ elif st.session_state.page == 'AI Agent':
             }
             
             try:
+                # FIXED: Use proper date casting for BigQuery
                 query = """
                 SELECT 
                     cp.customer_id,
@@ -823,6 +824,7 @@ elif st.session_state.page == 'AI Agent':
                 FROM `ford-assessment-100425.ford_credit_raw.customer_profiles` cp
                 LEFT JOIN `ford-assessment-100425.ford_credit_raw.consumer_sales` cs
                     ON cp.customer_id = cs.customer_id
+                WHERE cs.sale_timestamp IS NOT NULL
                 GROUP BY cp.customer_id, cp.credit_tier
                 HAVING COUNT(cs.vin) > 0
                 """
@@ -958,9 +960,10 @@ elif st.session_state.page == 'AI Agent':
             }
             
             try:
+                # FIXED: Use proper date functions for BigQuery
                 query = """
                 SELECT 
-                    DATE_TRUNC(sale_timestamp, MONTH) as month,
+                    DATE_TRUNC(DATE(sale_timestamp), MONTH) as month,
                     COUNT(*) as monthly_sales,
                     SUM(sale_price) as monthly_revenue,
                     AVG(sale_price) as avg_sale_price
@@ -1115,14 +1118,14 @@ elif st.session_state.page == 'AI Agent':
             }
             
             try:
-                # Get baseline metrics
+                # FIXED: Use proper date casting for BigQuery
                 query = """
                 SELECT 
                     SUM(sale_price) as total_revenue,
                     COUNT(DISTINCT customer_id) as active_customers,
                     AVG(sale_price) as avg_transaction_value
                 FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
-                WHERE sale_timestamp >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
+                WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
                 """
                 
                 df = self.execute_query(query)
