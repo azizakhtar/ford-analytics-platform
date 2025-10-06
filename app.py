@@ -2,6 +2,9 @@ import streamlit as st
 import hmac
 import os
 
+# ADD THIS LINE - Force page configuration BEFORE password check
+st.set_page_config(page_title="Ford Analytics", page_icon="🚗", layout="wide")
+
 def check_password():
     # Try multiple ways to get the password
     try:
@@ -33,8 +36,7 @@ def check_password():
 if not check_password():
     st.stop()
 
-# Main app
-st.set_page_config(page_title="Ford Analytics", page_icon="🚗", layout="wide")
+# REST OF YOUR APP CODE...
 st.title("🚗 Ford Analytics Platform")
 st.success("✅ Access granted! Welcome to Ford Analytics.")
 
