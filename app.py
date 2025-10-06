@@ -2,21 +2,14 @@ import streamlit as st
 import hmac
 import os
 
-# ADD THIS LINE - Force page configuration BEFORE password check
+# Page config MUST be first
 st.set_page_config(page_title="Ford Analytics", page_icon="🚗", layout="wide")
 
 def check_password():
-    # Try multiple ways to get the password
     try:
-        # Method 1: Streamlit secrets
         correct_password = st.secrets["password"]
     except:
-        try:
-            # Method 2: Environment variable
-            correct_password = os.environ.get("APP_PASSWORD", "ford2024")
-        except:
-            # Method 3: Hardcoded fallback
-            correct_password = "ford2024"
+        correct_password = "ford2024"
     
     if "password_correct" in st.session_state and st.session_state["password_correct"]:
         return True
@@ -36,23 +29,41 @@ def check_password():
 if not check_password():
     st.stop()
 
-# REST OF YOUR APP CODE...
-st.title("🚗 Ford Analytics Platform")
-st.success("✅ Access granted! Welcome to Ford Analytics.")
+# MANUAL NAVIGATION
+st.sidebar.title("🚗 Ford Analytics")
+page = st.sidebar.radio("Navigate to:", 
+    ["📊 Dashboard", "💬 SQL Chat", "🤖 AI Agent"])
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.metric("Total Revenue", "$4.2M", "+12%")
-    st.metric("Active Customers", "8,421")
-with col2:
-    st.metric("Active Loans", "1,847", "+8%")
-    st.metric("Portfolio Value", "$142M")
-with col3:
-    st.metric("Delinquency Rate", "2.3%", "-0.4%")
-    st.metric("AI Insights", "28")
+if page == "📊 Dashboard":
+    st.title("📊 Business Dashboard")
+    st.success("✅ Access granted! Welcome to Ford Analytics.")
 
-st.markdown("---")
-st.markdown("### Available Pages:")
-st.markdown("- **Dashboard**: Overview and metrics")
-st.markdown("- **SQL Chat**: Natural language to SQL")
-st.markdown("- **AI Agent**: Business strategy testing")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Revenue", "$4.2M", "+12%")
+        st.metric("Active Customers", "8,421")
+    with col2:
+        st.metric("Active Loans", "1,847", "+8%")
+        st.metric("Portfolio Value", "$142M")
+    with col3:
+        st.metric("Delinquency Rate", "2.3%", "-0.4%")
+        st.metric("AI Insights", "28")
+
+elif page == "💬 SQL Chat":
+    st.title("💬 SQL Chat Interface")
+    st.info("Natural language to SQL conversion")
+    
+    # Add your SQL Chat functionality here
+    query = st.text_area("Enter your data question:")
+    if st.button("Run Query"):
+        st.success(f"Processing: {query}")
+        # Your SQL Chat code would go here
+
+elif page == "🤖 AI Agent":
+    st.title("🤖 AI Strategy Testing") 
+    st.info("AI-powered business analysis")
+    
+    # Add your AI Agent functionality here
+    if st.button("Run AI Analysis"):
+        st.success("AI analysis complete!")
+        # Your AI Agent code would go here
