@@ -1,72 +1,46 @@
 import streamlit as st
 import hmac
-import hashlib
 
-# ===== PASSWORD PROTECTION =====
 def check_password():
-    """Returns `True` if the user had the correct password."""
-    
-    # Check if password secret is set
     try:
         correct_password = st.secrets["password"]
-    except KeyError:
-        st.error("🔧 Configuration Error: Password not set in Streamlit secrets")
-        st.info("Please add this to your Streamlit Cloud secrets:")
-        st.code("""[secrets]
-password = "your_password_here"""")
+    except:
+        st.error("Please set password in Streamlit secrets")
         return False
-
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if hmac.compare_digest(st.session_state["password"], correct_password):
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]
-        else:
-            st.session_state["password_correct"] = False
-
-    # Return True if the password is validated.
-    if st.session_state.get("password_correct", False):
+    
+    if "password_correct" in st.session_state and st.session_state["password_correct"]:
         return True
-
-    # Show input for password.
-    st.title("🔐 Ford Analytics Portal")
-    st.markdown("### Enter the access password to continue")
-    st.text_input(
-        "Password", type="password", on_change=password_entered, key="password"
-    )
-    if "password_correct" in st.session_state:
-        st.error("😕 Password incorrect")
+        
+    pwd = st.text_input("Password", type="password")
+    if st.button("Login"):
+        if hmac.compare_digest(pwd, correct_password):
+            st.session_state["password_correct"] = True
+            st.rerun()
+        else:
+            st.error("Wrong password")
     return False
 
-# Check password before showing the app
 if not check_password():
     st.stop()
 
-# ===== YOUR EXISTING APP CONTENT =====
-st.set_page_config(
-    page_title="Ford Fleet Analytics",
-    page_icon="🚗",
-    layout="wide"
-)
-
-st.title("🚗 Ford Fleet Management Platform")
-st.markdown("### Multi-Page Analytics Dashboard")
-
-st.sidebar.success("Select a page from the sidebar")
+# Main app
+st.set_page_config(page_title="Ford Analytics", page_icon="🚗", layout="wide")
+st.title("🚗 Ford Analytics Platform")
+st.success("Access granted!")
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.metric("Total Vehicles", "1,247")
+    st.metric("Total Revenue", "$4.2M", "+12%")
     st.metric("Active Customers", "8,421")
 with col2:
+    st.metric("Active Loans", "1,847", "+8%")
     st.metric("Portfolio Value", "$142M")
-    st.metric("AI Insights", "28")
 with col3:
-    st.metric("Agent Status", "Ready")
-    st.metric("Cost Control", "Active")
+    st.metric("Delinquency Rate", "2.3%", "-0.4%")
+    st.metric("AI Insights", "28")
 
 st.markdown("---")
 st.markdown("### Available Pages:")
 st.markdown("- **Dashboard**: Overview and metrics")
-st.markdown("- **SQL Chat**: Your existing Gemini SQL interface")
-st.markdown("- **AI Agent**: Autonomous analytics with cost controls")
+st.markdown("- **SQL Chat**: Natural language to SQL")
+st.markdown("- **AI Agent**: Business strategy testing")
