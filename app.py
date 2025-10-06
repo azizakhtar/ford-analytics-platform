@@ -4,6 +4,37 @@ import hmac
 # Page config MUST be first
 st.set_page_config(page_title="Ford Analytics", layout="wide")
 
+# Hide Streamlit's default sidebar elements
+st.markdown("""
+    <style>
+        /* Hide the default Streamlit sidebar navigation */
+        .st-emotion-cache-16txtl3 {
+            padding-top: 0rem !important;
+        }
+        
+        /* Hide the default page navigation in sidebar */
+        [data-testid="stSidebarNav"] {
+            display: none !important;
+        }
+        
+        /* Hide any other default Streamlit sidebar elements */
+        .st-emotion-cache-1oe5cao {
+            display: none !important;
+        }
+        
+        /* Style our custom sidebar */
+        .custom-sidebar {
+            margin-top: 0rem !important;
+        }
+        
+        /* Ensure main content area is properly spaced */
+        .main .block-container {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 def check_password():
     """Returns `True` if the user had the correct password."""
     def password_entered():
@@ -37,7 +68,7 @@ def check_password():
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent2.png", width=200)
+        st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent.png", width=200)
         st.title("Ford Analytics Portal")
         st.markdown("### Enter the access password")
         st.text_input(
@@ -62,39 +93,60 @@ if not check_password():
 
 # Once password is verified, set up the main app
 def main():
-    # Add logo and title to sidebar
-    st.sidebar.markdown(
-        """
+    # Clear any previous content
+    st.empty()
+    
+    # Add custom sidebar styling
+    st.markdown("""
         <style>
-        .sidebar-logo {
-            display: flex;
-            align-items: center;
-            margin-bottom: 2rem;
+        /* Hide the default Streamlit sidebar navigation completely */
+        [data-testid="stSidebarNav"] {
+            display: none !important;
         }
-        .sidebar-logo img {
-            margin-right: 10px;
+        
+        /* Hide the hamburger menu if present */
+        #MainMenu {
+            visibility: hidden;
+        }
+        
+        /* Hide footer */
+        footer {
+            visibility: hidden;
+        }
+        
+        /* Style our custom sidebar content */
+        .sidebar-content {
+            margin-top: 0rem;
         }
         </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    """, unsafe_allow_html=True)
     
-    # Logo and title in sidebar
-    col1, col2 = st.sidebar.columns([1, 2])
-    with col1:
-        st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent2.png", width=50)
-    with col2:
-        st.markdown("### Ford Analytics")
-    
-    st.sidebar.markdown("---")
-    
-    # Navigation
-    st.sidebar.title("Navigation")
-    page = st.sidebar.radio(
-        "Go to:",
-        ["Dashboard", "SQL Chat", "AI Agent"],
-        index=0
-    )
+    # Create our custom sidebar content
+    with st.sidebar:
+        st.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
+        
+        # Logo and title in sidebar
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent.png", width=50)
+        with col2:
+            st.markdown("### Ford Analytics")
+        
+        st.markdown("---")
+        
+        # Navigation
+        st.markdown("#### Navigation")
+        page = st.radio(
+            "Select a page:",
+            ["Dashboard", "SQL Chat", "AI Agent"],
+            index=0,
+            key="nav_radio"
+        )
+        
+        st.markdown("---")
+        st.markdown("*Use the navigation above to explore different analytics tools*")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     
     # Store current page in session state
     if 'current_page' not in st.session_state:
