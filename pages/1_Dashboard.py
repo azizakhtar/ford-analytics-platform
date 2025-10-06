@@ -3,7 +3,7 @@ import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-st.set_page_config(page_title="Ford Dashboard", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Ford Dashboard", layout="wide")
 
 def get_bigquery_client():
     try:
@@ -23,13 +23,13 @@ def get_bigquery_client():
 
 client = get_bigquery_client()
 
-st.title("📊 Ford Analytics Dashboard")
+st.title("Ford Analytics Dashboard")
 st.markdown("Comprehensive overview of fleet performance")
 
 if client:
-    st.success("✅ Connected to BigQuery - Live Data")
+    st.success("Connected to BigQuery - Live Data")
 else:
-    st.warning("🚧 Demo Mode - Sample Data")
+    st.warning("Demo Mode - Sample Data")
 
 # Metrics
 col1, col2, col3, col4 = st.columns(4)
@@ -48,7 +48,7 @@ if client:
         query_job = client.query(preview_query)
         data = query_job.to_dataframe()
         st.dataframe(data)
-        st.success(f"✅ Loaded {len(data)} rows from BigQuery")
+        st.success(f"Loaded {len(data)} rows from BigQuery")
     except Exception as e:
         st.error(f"Could not load data: {str(e)}")
 else:
