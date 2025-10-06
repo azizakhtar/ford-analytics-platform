@@ -1,4 +1,3 @@
-fixed_app = '''
 import streamlit as st
 import hmac
 import hashlib
@@ -13,10 +12,8 @@ def check_password():
     except KeyError:
         st.error("🔧 Configuration Error: Password not set in Streamlit secrets")
         st.info("Please add this to your Streamlit Cloud secrets:")
-        st.code('''
-[secrets]
-password = "your_password_here"
-''')
+        st.code("""[secrets]
+password = "your_password_here"""")
         return False
 
     def password_entered():
@@ -73,9 +70,3 @@ st.markdown("### Available Pages:")
 st.markdown("- **Dashboard**: Overview and metrics")
 st.markdown("- **SQL Chat**: Your existing Gemini SQL interface")
 st.markdown("- **AI Agent**: Autonomous analytics with cost controls")
-'''
-
-with open('app.py', 'w') as f:
-    f.write(fixed_app)
-
-print("✅ Created fixed app.py with better error handling")
