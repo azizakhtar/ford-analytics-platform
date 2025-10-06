@@ -1,14 +1,6 @@
 # .gitignore
+ford-credit-key.json  # ← This is crucial!
 .env
 *.json
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
-.env/
-.venv/
-venv/
-ENV/
-.env.local
-.streamlit/secrets.toml
