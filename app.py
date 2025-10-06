@@ -8,29 +8,23 @@ st.set_page_config(page_title="Ford Analytics", layout="wide")
 st.markdown("""
     <style>
         /* Hide the default Streamlit sidebar navigation */
-        .st-emotion-cache-16txtl3 {
-            padding-top: 0rem !important;
-        }
-        
-        /* Hide the default page navigation in sidebar */
         [data-testid="stSidebarNav"] {
             display: none !important;
         }
         
-        /* Hide any other default Streamlit sidebar elements */
-        .st-emotion-cache-1oe5cao {
+        /* Hide the hamburger menu if present */
+        #MainMenu {
+            visibility: hidden;
+        }
+        
+        /* Hide footer */
+        footer {
+            visibility: hidden;
+        }
+        
+        /* Hide deploy button */
+        .stDeployButton {
             display: none !important;
-        }
-        
-        /* Style our custom sidebar */
-        .custom-sidebar {
-            margin-top: 0rem !important;
-        }
-        
-        /* Ensure main content area is properly spaced */
-        .main .block-container {
-            padding-top: 1rem;
-            padding-bottom: 1rem;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -46,26 +40,14 @@ def check_password():
             
         if hmac.compare_digest(st.session_state["password"], correct_password):
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store the password.
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
-    # Return True if the password is validated.
     if st.session_state.get("password_correct", False):
         return True
 
-    # Show input for password.
-    st.markdown(
-        """
-        <style>
-        .main .block-container {
-            padding-top: 2rem;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    
+    # Show password input
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent.png", width=200)
@@ -89,42 +71,15 @@ def check_password():
 
 # Check password first
 if not check_password():
-    st.stop()  # Do not continue if check_password is not True.
+    st.stop()
 
-# Once password is verified, set up the main app
+# MAIN APPLICATION - Only shown after password authentication
 def main():
     # Clear any previous content
     st.empty()
     
-    # Add custom sidebar styling
-    st.markdown("""
-        <style>
-        /* Hide the default Streamlit sidebar navigation completely */
-        [data-testid="stSidebarNav"] {
-            display: none !important;
-        }
-        
-        /* Hide the hamburger menu if present */
-        #MainMenu {
-            visibility: hidden;
-        }
-        
-        /* Hide footer */
-        footer {
-            visibility: hidden;
-        }
-        
-        /* Style our custom sidebar content */
-        .sidebar-content {
-            margin-top: 0rem;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    
     # Create our custom sidebar content
     with st.sidebar:
-        st.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
-        
         # Logo and title in sidebar
         col1, col2 = st.columns([1, 2])
         with col1:
@@ -136,36 +91,52 @@ def main():
         
         # Navigation
         st.markdown("#### Navigation")
-        page = st.radio(
-            "Select a page:",
-            ["Dashboard", "SQL Chat", "AI Agent"],
-            index=0,
-            key="nav_radio"
-        )
+        
+        # Use buttons instead of radio for better control
+        if st.button("📊 Dashboard", use_container_width=True, type="primary" if st.session_state.get('current_page') == 'dashboard' else "secondary"):
+            st.session_state.current_page = "dashboard"
+            st.switch_page("dashboard.py")
+            
+        if st.button("💬 SQL Chat", use_container_width=True, type="primary" if st.session_state.get('current_page') == 'sql_chat' else "secondary"):
+            st.session_state.current_page = "sql_chat"
+            st.switch_page("sql_chat.py")
+            
+        if st.button("🤖 AI Agent", use_container_width=True, type="primary" if st.session_state.get('current_page') == 'ai_agent' else "secondary"):
+            st.session_state.current_page = "ai_agent"
+            st.switch_page("ai_agent.py")
         
         st.markdown("---")
         st.markdown("*Use the navigation above to explore different analytics tools*")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
     
-    # Store current page in session state
-    if 'current_page' not in st.session_state:
-        st.session_state.current_page = "Dashboard"
+    # Show welcome content on the main app page
+    st.title("🚗 Welcome to Ford Analytics")
+    st.markdown("### Select a tool from the sidebar to get started")
     
-    if page != st.session_state.current_page:
-        st.session_state.current_page = page
-        st.rerun()
+    col1, col2, col3 = st.columns(3)
     
-    # Load the appropriate page
-    if st.session_state.current_page == "Dashboard":
-        import dashboard
-        dashboard.main()
-    elif st.session_state.current_page == "SQL Chat":
-        import sql_chat
-        sql_chat.main()
-    elif st.session_state.current_page == "AI Agent":
-        import ai_agent
-        ai_agent.main()
+    with col1:
+        st.markdown("#### 📊 Dashboard")
+        st.markdown("Comprehensive overview of fleet performance, revenue metrics, and customer insights.")
+        if st.button("Go to Dashboard", key="dash_btn"):
+            st.session_state.current_page = "dashboard"
+            st.switch_page("dashboard.py")
+    
+    with col2:
+        st.markdown("#### 💬 SQL Chat")
+        st.markdown("Natural language to SQL converter. Ask questions about your data in plain English.")
+        if st.button("Go to SQL Chat", key="sql_btn"):
+            st.session_state.current_page = "sql_chat"
+            st.switch_page("sql_chat.py")
+    
+    with col3:
+        st.markdown("#### 🤖 AI Agent")
+        st.markdown("Test business strategies with AI-powered analysis and predictive modeling.")
+        if st.button("Go to AI Agent", key="ai_btn"):
+            st.session_state.current_page = "ai_agent"
+            st.switch_page("ai_agent.py")
+    
+    st.markdown("---")
+    st.info("💡 **Tip**: Use the sidebar for quick navigation between tools")
 
 if __name__ == "__main__":
     main()
