@@ -4,6 +4,9 @@ import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
+# Page config
+st.set_page_config(page_title="Ford Dashboard", layout="wide")
+
 def check_password():
     """Password protection for individual pages"""
     try:
@@ -16,6 +19,8 @@ def check_password():
         
     # If not authenticated, redirect to main app
     st.warning("🔒 Please authenticate through the main app")
+    if st.button("Go to Login"):
+        st.switch_page("app.py")
     st.stop()
 
 def get_bigquery_client():
@@ -38,8 +43,13 @@ def main():
     # Check password first
     check_password()
     
-    # Page config for this specific page
-    st.set_page_config(page_title="Ford Dashboard", layout="wide")
+    # Set current page
+    st.session_state.current_page = "dashboard"
+    
+    # Add navigation back to main app
+    with st.sidebar:
+        if st.button("← Back to Main Menu"):
+            st.switch_page("app.py")
     
     client = get_bigquery_client()
 
