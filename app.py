@@ -4,25 +4,6 @@ import hmac
 # Page config MUST be first
 st.set_page_config(page_title="Ford Analytics", layout="wide")
 
-def add_logo():
-    st.markdown(
-        """
-        <style>
-            [data-testid="stSidebar"]::before {
-                content: "";
-                display: block;
-                height: 80px;
-                background-image: url('https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent2.png');
-                background-repeat: no-repeat;
-                background-position: 20px 20px;
-                background-size: 120px;
-                margin-bottom: 20px;
-            }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
 def check_password():
     try:
         correct_password = st.secrets["password"]
@@ -47,17 +28,47 @@ def check_password():
 if not check_password():
     st.stop()
 
-# Add logo to sidebar
-add_logo()
+# Add logo using columns (more reliable than CSS)
+col1, col2 = st.sidebar.columns([1, 3])
+with col1:
+    st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent2.png", width=80)
+with col2:
+    st.title("Ford Analytics")
 
-# MANUAL NAVIGATION
-st.sidebar.title("Ford Analytics")
+# MANUAL NAVIGATION using session state instead of switch_page
+st.sidebar.markdown("---")
 page = st.sidebar.radio("Navigate to:", 
     ["Dashboard", "SQL Chat", "AI Agent"])
 
-if page == "Dashboard":
-    st.switch_page("1_Dashboard.py")
-elif page == "SQL Chat":
-    st.switch_page("2_SQL_Chat.py")
-elif page == "AI Agent":
-    st.switch_page("3_AI_Agent.py")
+# Set the page in session state
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = "Dashboard"
+
+if page != st.session_state.current_page:
+    st.session_state.current_page = page
+    st.rerun()
+
+# Load the appropriate page based on session state
+if st.session_state.current_page == "Dashboard":
+    # Import and run dashboard
+    import importlib
+    import sys
+    sys.path.append('.')
+    from 1_Dashboard import main as dashboard_main
+    dashboard_main()
+    
+elif st.session_state.current_page == "SQL Chat":
+    # Import and run SQL Chat
+    import importlib
+    import sys
+    sys.path.append('.')
+    from 2_SQL_Chat import main as sql_main
+    sql_main()
+    
+elif st.session_state.current_page == "AI Agent":
+    # Import and run AI Agent
+    import importlib
+    import sys
+    sys.path.append('.')
+    from 3_AI_Agent import main as ai_main
+    ai_main()
