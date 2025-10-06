@@ -31,7 +31,7 @@ if not check_password():
 # Add logo using columns (more reliable than CSS)
 col1, col2 = st.sidebar.columns([1, 3])
 with col1:
-    st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent.png2", width=80)
+    st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent.png", width=80)
 with col2:
     st.title("Ford Analytics")
 
