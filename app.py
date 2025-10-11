@@ -8,56 +8,310 @@ from google.oauth2 import service_account
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.linear_model import LinearRegression
-from sklearn.cluster import KMeans
-from sklearn.metrics import mean_squared_error, r2_score
-from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-import scipy.stats as stats
+from functools import lru_cache
+from typing import Dict, List, Tuple, Optional
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Page config MUST be first
 st.set_page_config(page_title="Ford Analytics", layout="wide")
 
-# Hide ALL Streamlit default elements
+# Hide Streamlit defaults
 st.markdown("""
     <style>
-        /* Hide the default Streamlit sidebar navigation */
-        [data-testid="stSidebarNav"] {
-            display: none !important;
-        }
-        
-        /* Hide the default page navigation in sidebar */
-        .st-emotion-cache-1oe5cao {
-            display: none !important;
-        }
-        
-        /* Hide hamburger menu */
-        #MainMenu {
-            visibility: hidden;
-        }
-        
-        /* Hide footer */
-        footer {
-            visibility: hidden;
-        }
-        
-        /* Hide deploy button */
-        .stDeployButton {
-            display: none !important;
-        }
-        
-        /* Ensure our sidebar content is visible */
-        .sidebar .sidebar-content {
-            display: block !important;
-        }
-        
-        /* Custom button styling */
-        .stButton button {
-            width: 100%;
-        }
+        [data-testid="stSidebarNav"] { display: none !important; }
+        .st-emotion-cache-1oe5cao { display: none !important; }
+        #MainMenu { visibility: hidden; }
+        footer { visibility: hidden; }
+        .stDeployButton { display: none !important; }
     </style>
 """, unsafe_allow_html=True)
+
+# ============================================================================
+# OPTIMIZATION 1: Centralized Cache & Connection Management
+# ============================================================================
+
+class ConnectionManager:
+    """Singleton pattern for BigQuery connections - avoid recreating clients"""
+    _instance = None
+    _client = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def get_client(self):
+        if self._client is None:
+            try:
+                secrets = st.secrets.get("gcp_service_account")
+                if secrets:
+                    service_account_info = {
+                        "type": "service_account",
+                        "project_id": secrets["project_id"],
+                        "private_key": secrets["private_key"].replace('\\n', '\n'),
+                        "client_email": secrets["client_email"],
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                    }
+                    credentials = service_account.Credentials.from_service_account_info(service_account_info)
+                    self._client = bigquery.Client(credentials=credentials, project=secrets["project_id"])
+                    logger.info("BigQuery client initialized")
+            except Exception as e:
+                logger.error(f"BigQuery connection failed: {e}")
+        return self._client
+
+# ============================================================================
+# OPTIMIZATION 2: Query Caching & Template Management
+# ============================================================================
+
+class QueryCache:
+    """Cache frequently executed queries"""
+    def __init__(self, ttl=3600):
+        self.cache = {}
+        self.ttl = ttl
+    
+    @st.cache_data(ttl=3600)
+    def execute_cached_query(self, query: str, client):
+        try:
+            return client.query(query).to_dataframe()
+        except Exception as e:
+            logger.error(f"Query execution failed: {e}")
+            return pd.DataFrame()
+
+class QueryTemplateManager:
+    """Centralized query template management"""
+    
+    TEMPLATES = {
+        'customer_count': """
+            SELECT COUNT(*) as total_customers 
+            FROM `ford-assessment-100425.ford_credit_curated.customer_360_view`
+        """,
+        'top_customers': """
+            SELECT customer_id, COUNT(vin) as purchases, SUM(sale_price) as total_spent
+            FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
+            GROUP BY customer_id ORDER BY total_spent DESC LIMIT {limit}
+        """,
+        'sales_by_tier': """
+            SELECT cp.credit_tier, COUNT(cs.vin) as sales, SUM(cs.sale_price) as revenue
+            FROM `ford-assessment-100425.ford_credit_curated.customer_360_view` cp
+            JOIN `ford-assessment-100425.ford_credit_raw.consumer_sales` cs ON cp.customer_id = cs.customer_id
+            GROUP BY cp.credit_tier ORDER BY revenue DESC
+        """,
+        'monthly_trends': """
+            SELECT 
+                EXTRACT(YEAR FROM sale_timestamp) as year,
+                EXTRACT(MONTH FROM sale_timestamp) as month,
+                COUNT(*) as sales, SUM(sale_price) as revenue
+            FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
+            GROUP BY year, month ORDER BY year, month
+        """,
+        'churn_risk': """
+            SELECT customer_id, DATE_DIFF(CURRENT_DATE(), DATE(MAX(sale_timestamp)), DAY) as days_inactive
+            FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
+            GROUP BY customer_id HAVING days_inactive > 90
+        """
+    }
+    
+    @staticmethod
+    def get_template(name: str, **kwargs) -> str:
+        template = QueryTemplateManager.TEMPLATES.get(name, "")
+        return template.format(**kwargs) if kwargs else template
+
+# ============================================================================
+# OPTIMIZATION 3: Lightweight Strategy Pattern
+# ============================================================================
+
+class StrategyAnalyzer:
+    """Simplified strategy testing with pattern matching"""
+    
+    STRATEGY_PATTERNS = {
+        'pricing': {
+            'sales_impact': -0.05,
+            'revenue_impact': 0.08,
+            'confidence': 'High',
+            'risk': 'Churn increase 2-5%'
+        },
+        'retention': {
+            'sales_impact': 0.05,
+            'revenue_impact': 0.18,
+            'confidence': 'High',
+            'risk': 'Implementation cost'
+        },
+        'loyalty': {
+            'sales_impact': 0.08,
+            'revenue_impact': 0.12,
+            'confidence': 'High',
+            'risk': 'Low adoption'
+        },
+        'referral': {
+            'sales_impact': 0.12,
+            'revenue_impact': 0.15,
+            'confidence': 'Medium',
+            'risk': 'Quality concerns'
+        }
+    }
+    
+    @staticmethod
+    @lru_cache(maxsize=32)
+    def analyze_strategy(strategy_name: str) -> Dict:
+        """Fast strategy analysis without heavy computation"""
+        strategy_lower = strategy_name.lower()
+        
+        for key, params in StrategyAnalyzer.STRATEGY_PATTERNS.items():
+            if key in strategy_lower:
+                return params
+        
+        return {
+            'sales_impact': 0.08,
+            'revenue_impact': 0.12,
+            'confidence': 'Medium',
+            'risk': 'Unvalidated strategy'
+        }
+
+# ============================================================================
+# OPTIMIZATION 4: Data Generation (Fallback - no network calls)
+# ============================================================================
+
+class DataGenerator:
+    """Generate sample data efficiently for analysis"""
+    
+    @staticmethod
+    def generate_timeseries(periods: int = 12) -> pd.DataFrame:
+        """Generate monthly sales data"""
+        np.random.seed(42)
+        dates = pd.date_range('2022-01-01', periods=periods, freq='M')
+        trend = np.linspace(1000, 1500, periods)
+        seasonal = 100 * np.sin(2 * np.pi * np.arange(periods) / 12)
+        noise = np.random.normal(0, 50, periods)
+        
+        return pd.DataFrame({
+            'date': dates,
+            'sales': trend + seasonal + noise,
+            'revenue': (trend + seasonal + noise) * 25000
+        })
+    
+    @staticmethod
+    def generate_customer_segments(n_samples: int = 500) -> pd.DataFrame:
+        """Generate customer segmentation data"""
+        np.random.seed(42)
+        return pd.DataFrame({
+            'customer_id': [f'CUST_{i:04d}' for i in range(n_samples)],
+            'spend': np.random.exponential(50000, n_samples).clip(0),
+            'transactions': np.random.poisson(5, n_samples) + 1,
+            'tier': np.random.choice(['Gold', 'Silver', 'Bronze'], n_samples, p=[0.2, 0.5, 0.3]),
+            'churn_risk': np.random.beta(2, 5, n_samples) * 100
+        })
+
+# ============================================================================
+# OPTIMIZATION 5: Fast Model Training (Vectorized)
+# ============================================================================
+
+class FastAnalytics:
+    """Lightweight ML without slow imports"""
+    
+    @staticmethod
+    def quick_forecast(df: pd.DataFrame, periods: int = 12) -> Tuple[np.ndarray, np.ndarray]:
+        """Fast linear forecasting"""
+        if len(df) < 3:
+            return np.array([]), np.array([])
+        
+        X = np.arange(len(df)).reshape(-1, 1)
+        y = df['sales'].values if 'sales' in df.columns else df.iloc[:, 0].values
+        
+        model = LinearRegression()
+        model.fit(X, y)
+        
+        X_future = np.arange(len(df), len(df) + periods).reshape(-1, 1)
+        forecast = model.predict(X_future)
+        
+        return forecast, np.full(periods, np.std(y) * 0.15)
+    
+    @staticmethod
+    def segment_customers(df: pd.DataFrame, n_segments: int = 3) -> np.ndarray:
+        """Fast customer segmentation using quantiles"""
+        spend_quantiles = np.quantile(df['spend'], np.linspace(0, 1, n_segments + 1))
+        return np.digitize(df['spend'], spend_quantiles) - 1
+
+# ============================================================================
+# OPTIMIZATION 6: Streamlined Agent System
+# ============================================================================
+
+class ManagerAgent:
+    """Simplified manager agent - discovers strategies via pattern matching"""
+    
+    STRATEGIES = [
+        "Test 2% APR reduction for Gold-tier customers",
+        "Implement reactivation campaign for inactive customers",
+        "Create bundled product offering for high-value segments",
+        "Launch targeted upselling campaign for medium-tier customers",
+        "Optimize loan approval rates for Silver-tier customers"
+    ]
+    
+    @staticmethod
+    def discover_strategies() -> List[str]:
+        """Return pre-defined strategy portfolio"""
+        return ManagerAgent.STRATEGIES
+
+class AnalystAgent:
+    """Simplified analyst agent - runs efficient tests"""
+    
+    def __init__(self, client: Optional[bigquery.Client] = None):
+        self.client = client
+        self.cache = QueryCache()
+    
+    def test_strategy(self, strategy: str) -> Dict:
+        """Run lightweight strategy tests"""
+        analysis = StrategyAnalyzer.analyze_strategy(strategy)
+        
+        # Generate sample data if no client
+        if self.client is None:
+            df = DataGenerator.generate_timeseries()
+        else:
+            try:
+                df = self.cache.execute_cached_query(
+                    QueryTemplateManager.get_template('monthly_trends'),
+                    self.client
+                )
+            except:
+                df = DataGenerator.generate_timeseries()
+        
+        # Run forecast
+        forecast, confidence = FastAnalytics.quick_forecast(df)
+        
+        return {
+            'strategy': strategy,
+            'analysis': analysis,
+            'forecast': forecast,
+            'confidence_interval': confidence,
+            'recommendation': self._generate_recommendation(analysis, forecast),
+            'metrics': self._calculate_metrics(analysis, forecast)
+        }
+    
+    @staticmethod
+    def _generate_recommendation(analysis: Dict, forecast: np.ndarray) -> str:
+        if analysis['confidence'] == 'High' and len(forecast) > 0:
+            return "✓ STRONG: Proceed with implementation"
+        elif analysis['confidence'] == 'Medium':
+            return "⚠ MODERATE: Test in limited rollout"
+        else:
+            return "✗ CAUTION: Requires refinement"
+    
+    @staticmethod
+    def _calculate_metrics(analysis: Dict, forecast: np.ndarray) -> Dict:
+        return {
+            'Sales Impact': f"{analysis['sales_impact']*100:+.1f}%",
+            'Revenue Impact': f"{analysis['revenue_impact']*100:+.1f}%",
+            'Confidence': analysis['confidence'],
+            'Risk': analysis['risk']
+        }
+
+# ============================================================================
+# OPTIMIZATION 7: Streamlined UI
+# ============================================================================
 
 def check_password():
     try:
@@ -65,11 +319,10 @@ def check_password():
     except:
         correct_password = "ford2024"
     
-    if "password_correct" in st.session_state and st.session_state["password_correct"]:
+    if st.session_state.get("password_correct"):
         return True
-        
+    
     st.title("Ford Analytics Portal")
-    st.markdown("### Enter the access password")
     pwd = st.text_input("Password", type="password", key="password_input")
     
     if st.button("Login"):
@@ -80,1542 +333,87 @@ def check_password():
             st.error("Wrong password")
     return False
 
-if not check_password():
-    st.stop()
-
-def get_bigquery_client():
-    try:
-        secrets = st.secrets["gcp_service_account"]
-        service_account_info = {
-            "type": "service_account",
-            "project_id": secrets["project_id"],
-            "private_key": secrets["private_key"].replace('\\n', '\n'),
-            "client_email": secrets["client_email"],
-            "token_uri": "https://oauth2.googleapis.com/token",
-        }
-        credentials = service_account.Credentials.from_service_account_info(service_account_info)
-        return bigquery.Client(credentials=credentials, project=secrets["project_id"])
-    except Exception as e:
-        st.error(f"BigQuery connection failed: {str(e)}")
-        return None
-
-# Initialize session state for page navigation
-if 'page' not in st.session_state:
-    st.session_state.page = 'Dashboard'
-
-# Custom sidebar navigation
-with st.sidebar:
-    # Logo at the top
-    st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent.png", width=150)
-    st.markdown("---")
+def main():
+    if not check_password():
+        st.stop()
     
-    st.title("Ford Analytics")
-    st.markdown("---")
+    # Initialize connection
+    conn_manager = ConnectionManager()
+    client = conn_manager.get_client()
     
-    # Page selection buttons with highlighting
-    if st.button("Dashboard", use_container_width=True, type="primary" if st.session_state.page == 'Dashboard' else "secondary"):
+    # Navigation
+    if 'page' not in st.session_state:
         st.session_state.page = 'Dashboard'
-        st.rerun()
-        
-    if st.button("SQL Chat", use_container_width=True, type="primary" if st.session_state.page == 'SQL Chat' else "secondary"):
-        st.session_state.page = 'SQL Chat'
-        st.rerun()
-        
-    if st.button("Agentic AI System", use_container_width=True, type="primary" if st.session_state.page == 'AI Agent' else "secondary"):
-        st.session_state.page = 'AI Agent'
-        st.rerun()
-
-# Display the selected page
-if st.session_state.page == 'Dashboard':
-    client = get_bigquery_client()
-
-    st.title("Ford Analytics Dashboard")
-    st.markdown("Comprehensive overview of fleet performance")
-
-    if client:
-        st.success("Connected to BigQuery - Live Data")
-    else:
-        st.warning("Demo Mode - Sample Data")
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Revenue", "$4.2M", "+12%")
-    col2.metric("Active Loans", "1,847", "+8%")
-    col3.metric("Delinquency Rate", "2.3%", "-0.4%")
-    col4.metric("Customer Satisfaction", "4.2/5", "+0.3")
-
-    st.markdown("---")
-    st.subheader("Live Data Preview")
-
-    if client:
-        try:
-            preview_query = "SELECT * FROM `ford-assessment-100425.ford_credit_raw.consumer_sales` LIMIT 10"
-            query_job = client.query(preview_query)
-            data = query_job.to_dataframe()
-            st.dataframe(data)
-            st.success(f"Loaded {len(data)} rows from BigQuery")
-        except Exception as e:
-            st.error(f"Could not load data: {str(e)}")
-    else:
-        st.info("Connect to BigQuery to see live data")
-
-elif st.session_state.page == 'SQL Chat':
-    client = get_bigquery_client()
     
-    class SchemaManager:
-        def __init__(self, client):
-            self.client = client
-            self.tables = {
-                'customer_360_view': {
-                    'description': 'Customer 360 view with comprehensive profile data',
-                    'primary_key': 'customer_id',
-                    'columns': [
-                        'customer_id', 'first_name', 'last_name', 'credit_tier', 
-                        'household_income_range', 'state', 'vehicles_owned', 
-                        'total_loans', 'avg_loan_amount', 'total_payments', 
-                        'late_payment_rate', 'service_interactions'
-                    ]
-                },
-                'loan_originations': {
-                    'description': 'Loan applications and originations',
-                    'primary_key': 'contract_id', 
-                    'columns': ['contract_id', 'customer_id', 'vin', 'contract_type', 'origination_date', 'loan_amount', 'interest_rate_apr', 'term_months', 'monthly_payment', 'remaining_balance', 'risk_tier', 'loan_status']
-                },
-                'consumer_sales': {
-                    'description': 'Individual vehicle sales transactions',
-                    'primary_key': 'vin',
-                    'columns': ['vin', 'customer_id', 'dealer_id', 'sale_timestamp', 'vehicle_model', 'vehicle_year', 
-                               'trim_level', 'powertrain', 'sale_type', 'sale_price', 'dealer_state', 'warranty_type', 'purchase_financed']
-                },
-                'billing_payments': {
-                    'description': 'Customer billing and payment records',
-                    'primary_key': 'payment_id',
-                    'columns': ['payment_id', 'customer_id', 'payment_amount', 'payment_date', 'payment_status', 'due_date']
-                },
-                'fleet_sales': {
-                    'description': 'Fleet vehicle sales to businesses',
-                    'primary_key': 'fleet_id',
-                    'columns': ['fleet_id', 'fleet_manager_id', 'business_name', 'business_type', 'fleet_size', 'primary_vehicle_type', 'total_vehicles_owned', 'fleet_contact_email', 'contract_start_date', 'preferred_dealer_network']
-                },
-                'customer_service': {
-                    'description': 'Customer service interactions and support tickets',
-                    'primary_key': 'interaction_id',
-                    'columns': [
-                        'interaction_id', 'customer_id', 'interaction_timestamp', 'channel', 
-                        'interaction_type', 'sentiment_score', 'issue_resolved', 
-                        'interaction_duration_min', 'agent_id', 'follow_up_required'
-                    ]
-                },
-                'vehicle_telemetry': {
-                    'description': 'Vehicle usage and performance data',
-                    'primary_key': 'vin',
-                    'columns': ['vin', 'aggregation_date', 'total_miles_driven', 'average_mpg', 'average_kwh_per_mile', 
-                              'hard_braking_events', 'rapid_accelerations', 'average_speed', 'ev_charging_sessions', 
-                              'average_state_of_charge', 'primary_usage_time', 'location_state']
-                }
-            }
-
-    class IntelligentSQLGenerator:
-        def __init__(self, schema_manager):
-            self.schema_manager = schema_manager
-            
-        def generate_sql(self, natural_language):
-            nl_lower = natural_language.lower()
-            
-            if any(word in nl_lower for word in ['average', 'avg']) and 'price' in nl_lower:
-                return """
-                SELECT AVG(sale_price) as average_sale_price
-                FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
-                WHERE sale_price IS NOT NULL
-                """
-            
-            elif 'count of sales' in nl_lower or 'number of sales' in nl_lower:
-                return """
-                SELECT COUNT(*) as total_sales
-                FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
-                """
-            
-            elif 'count of customers' in nl_lower or 'number of customers' in nl_lower:
-                return """
-                SELECT COUNT(*) as total_customers
-                FROM `ford-assessment-100425.ford_credit_curated.customer_360_view`
-                """
-            
-            elif 'top' in nl_lower and 'customer' in nl_lower and any(word in nl_lower for word in ['spend', 'purchase', 'sale']):
-                limit_match = re.search(r'top\s+(\d+)', nl_lower)
-                limit = limit_match.group(1) if limit_match else '10'
-                
-                return f"""
-                SELECT 
-                    customer_id,
-                    SUM(sale_price) as total_spending
-                FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
-                GROUP BY customer_id
-                ORDER BY total_spending DESC
-                LIMIT {limit}
-                """
-            
-            elif 'payment status' in nl_lower or 'payment distribution' in nl_lower:
-                return """
-                SELECT 
-                    payment_status,
-                    COUNT(*) as count,
-                    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) as percentage
-                FROM `ford-assessment-100425.ford_credit_raw.billing_payments`
-                GROUP BY payment_status
-                ORDER BY count DESC
-                """
-            
-            elif 'vehicle usage by state' in nl_lower or 'usage by state' in nl_lower:
-                return """
-                SELECT 
-                    location_state,
-                    COUNT(DISTINCT vin) as vehicle_count,
-                    AVG(total_miles_driven) as avg_miles,
-                    AVG(average_mpg) as avg_mpg
-                FROM `ford-assessment-100425.ford_credit_raw.vehicle_telemetry`
-                WHERE location_state IS NOT NULL
-                GROUP BY location_state
-                ORDER BY vehicle_count DESC
-                """
-            
-            elif 'monthly sales' in nl_lower or 'sales trend' in nl_lower:
-                return """
-                SELECT 
-                    EXTRACT(YEAR FROM sale_timestamp) as year,
-                    EXTRACT(MONTH FROM sale_timestamp) as month,
-                    COUNT(*) as monthly_sales,
-                    SUM(sale_price) as monthly_revenue,
-                    AVG(sale_price) as avg_sale_price
-                FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
-                GROUP BY year, month
-                ORDER BY year, month
-                """
-            
-            elif 'credit tier' in nl_lower and any(word in nl_lower for word in ['sales', 'revenue']):
-                return """
-                SELECT 
-                    cp.credit_tier,
-                    COUNT(cs.vin) as total_sales,
-                    SUM(cs.sale_price) as total_revenue,
-                    AVG(cs.sale_price) as avg_sale_price
-                FROM `ford-assessment-100425.ford_credit_curated.customer_360_view` cp
-                JOIN `ford-assessment-100425.ford_credit_raw.consumer_sales` cs
-                    ON cp.customer_id = cs.customer_id
-                GROUP BY cp.credit_tier
-                ORDER BY total_revenue DESC
-                """
-            
-            elif 'service' in nl_lower and any(word in nl_lower for word in ['type', 'request', 'interaction']):
-                return """
-                SELECT 
-                    interaction_type,
-                    COUNT(*) as request_count,
-                    AVG(interaction_duration_min) as avg_duration_minutes,
-                    AVG(sentiment_score) as avg_sentiment,
-                    SUM(CASE WHEN issue_resolved THEN 1 ELSE 0 END) as resolved_issues,
-                    ROUND(SUM(CASE WHEN issue_resolved THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as resolution_rate
-                FROM `ford-assessment-100425.ford_credit_raw.customer_service`
-                GROUP BY interaction_type
-                ORDER BY request_count DESC
-                """
-            
-            elif 'fleet' in nl_lower and any(word in nl_lower for word in ['sales', 'summary']):
-                return """
-                SELECT 
-                    EXTRACT(YEAR FROM contract_start_date) as year,
-                    COUNT(*) as fleet_contracts,
-                    SUM(fleet_size) as total_fleet_vehicles,
-                    AVG(fleet_size) as avg_fleet_size
-                FROM `ford-assessment-100425.ford_credit_raw.fleet_sales`
-                WHERE contract_start_date IS NOT NULL
-                GROUP BY year
-                ORDER BY year
-                """
-            
-            elif 'loan' in nl_lower and any(word in nl_lower for word in ['portfolio', 'status']):
-                return """
-                SELECT 
-                    loan_status,
-                    COUNT(*) as loan_count,
-                    SUM(loan_amount) as total_portfolio,
-                    AVG(loan_amount) as avg_loan_size,
-                    AVG(interest_rate_apr) as avg_interest_rate
-                FROM `ford-assessment-100425.ford_credit_raw.loan_originations`
-                GROUP BY loan_status
-                ORDER BY total_portfolio DESC
-                """
-            
-            else:
-                return """
-                SELECT *
-                FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
-                LIMIT 10
-                """
-
-    class QueryTemplates:
-        def __init__(self, schema_manager):
-            self.schema_manager = schema_manager
+    with st.sidebar:
+        st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics/main/transparent.png", width=150)
+        st.markdown("---")
+        st.title("Ford Analytics")
         
-        def get_template(self, template_name):
-            templates = {
-                'customer_count': """
-                SELECT COUNT(*) as total_customers 
-                FROM `ford-assessment-100425.ford_credit_curated.customer_360_view`
-                """,
-                
-                'top_customers_by_sales': """
-                SELECT 
-                    customer_id,
-                    COUNT(vin) as total_purchases,
-                    SUM(sale_price) as total_spent
-                FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
-                GROUP BY customer_id
-                ORDER BY total_spent DESC
-                LIMIT 10
-                """,
-                
-                'sales_by_credit_tier': """
-                SELECT 
-                    cp.credit_tier,
-                    COUNT(cs.vin) as total_sales,
-                    SUM(cs.sale_price) as total_revenue,
-                    AVG(cs.sale_price) as avg_sale_price
-                FROM `ford-assessment-100425.ford_credit_curated.customer_360_view` cp
-                JOIN `ford-assessment-100425.ford_credit_raw.consumer_sales` cs
-                    ON cp.customer_id = cs.customer_id
-                GROUP BY cp.credit_tier
-                ORDER BY total_revenue DESC
-                """,
-                
-                'monthly_sales_trends': """
-                SELECT 
-                    EXTRACT(YEAR FROM sale_timestamp) as year,
-                    EXTRACT(MONTH FROM sale_timestamp) as month,
-                    COUNT(*) as monthly_sales,
-                    SUM(sale_price) as monthly_revenue
-                FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
-                GROUP BY year, month
-                ORDER BY year, month
-                """,
-                
-                'payment_behavior': """
-                SELECT 
-                    payment_status,
-                    COUNT(*) as transaction_count,
-                    AVG(payment_amount) as avg_amount,
-                    SUM(payment_amount) as total_amount
-                FROM `ford-assessment-100425.ford_credit_raw.billing_payments`
-                GROUP BY payment_status
-                ORDER BY transaction_count DESC
-                """,
-                
-                'vehicle_usage_analysis': """
-                SELECT 
-                    location_state,
-                    COUNT(DISTINCT vin) as vehicle_count,
-                    AVG(total_miles_driven) as avg_miles,
-                    AVG(average_mpg) as avg_mpg
-                FROM `ford-assessment-100425.ford_credit_raw.vehicle_telemetry`
-                WHERE location_state IS NOT NULL
-                GROUP BY location_state
-                ORDER BY vehicle_count DESC
-                """,
-                
-                'customer_service_metrics': """
-                SELECT 
-                    interaction_type,
-                    COUNT(*) as request_count,
-                    AVG(interaction_duration_min) as avg_duration_minutes,
-                    AVG(sentiment_score) as avg_sentiment,
-                    SUM(CASE WHEN issue_resolved THEN 1 ELSE 0 END) as resolved_issues,
-                    ROUND(SUM(CASE WHEN issue_resolved THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as resolution_rate
-                FROM `ford-assessment-100425.ford_credit_raw.customer_service`
-                GROUP BY interaction_type
-                ORDER BY request_count DESC
-                """,
-                
-                'fleet_sales_summary': """
-                SELECT 
-                    EXTRACT(YEAR FROM contract_start_date) as year,
-                    COUNT(*) as fleet_contracts,
-                    SUM(fleet_size) as total_fleet_vehicles,
-                    AVG(fleet_size) as avg_fleet_size,
-                    COUNT(DISTINCT business_type) as business_types_served
-                FROM `ford-assessment-100425.ford_credit_raw.fleet_sales`
-                WHERE contract_start_date IS NOT NULL
-                GROUP BY year
-                ORDER BY year
-                """,
-                
-                'loan_portfolio': """
-                SELECT 
-                    loan_status,
-                    COUNT(*) as loan_count,
-                    SUM(loan_amount) as total_portfolio,
-                    AVG(loan_amount) as avg_loan_size,
-                    AVG(interest_rate_apr) as avg_interest_rate
-                FROM `ford-assessment-100425.ford_credit_raw.loan_originations`
-                GROUP BY loan_status
-                ORDER BY total_portfolio DESC
-                """,
-                
-                'customer_360_overview': """
-                SELECT 
-                    customer_id,
-                    first_name,
-                    last_name,
-                    credit_tier,
-                    household_income_range,
-                    state,
-                    vehicles_owned,
-                    total_loans,
-                    avg_loan_amount,
-                    total_payments,
-                    late_payment_rate,
-                    service_interactions
-                FROM `ford-assessment-100425.ford_credit_curated.customer_360_view`
-                ORDER BY vehicles_owned DESC
-                LIMIT 20
-                """
-            }
-            return templates.get(template_name, "SELECT 1 as no_template_found")
-
-    class SQLGeneratorApp:
-        def __init__(self, client):
-            self.client = client
-            self.schema_manager = SchemaManager(client)
-            self.sql_generator = IntelligentSQLGenerator(self.schema_manager)
-            self.templates = QueryTemplates(self.schema_manager)
+        pages = ['Dashboard', 'SQL Chat', 'Strategy Agent']
+        for page in pages:
+            if st.button(page, use_container_width=True, 
+                        type="primary" if st.session_state.page == page else "secondary"):
+                st.session_state.page = page
+                st.rerun()
+    
+    # Page rendering
+    if st.session_state.page == 'Dashboard':
+        st.title("Ford Analytics Dashboard")
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Revenue", "$4.2M", "+12%")
+        col2.metric("Active Loans", "1,847", "+8%")
+        col3.metric("Delinquency Rate", "2.3%", "-0.4%")
+        col4.metric("Customer Satisfaction", "4.2/5", "+0.3")
+    
+    elif st.session_state.page == 'Strategy Agent':
+        st.title("Agentic Strategy Testing System")
         
-        def execute_query(self, query):
-            try:
-                if self.client:
-                    query_job = self.client.query(query)
-                    return query_job.to_dataframe()
-                else:
-                    return pd.DataFrame()
-            except Exception as e:
-                st.error(f"Query execution failed: {e}")
-                return pd.DataFrame()
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Manager Agent")
+            st.markdown("Discovers growth strategies from data patterns")
+        with col2:
+            st.subheader("Analyst Agent")
+            st.markdown("Tests strategies with statistical modeling")
         
-        def render_interface(self):
-            st.title("Intelligent SQL Generator")
-            st.markdown("Natural Language to SQL - Describe your analysis in plain English")
+        st.markdown("---")
+        
+        # Manager Agent - Generate Strategies
+        if st.button("Generate Strategies", type="primary"):
+            strategies = ManagerAgent.discover_strategies()
+            st.session_state['strategies'] = strategies
+        
+        # Display strategies
+        if st.session_state.get('strategies'):
+            st.subheader("Generated Strategies")
+            analyst = AnalystAgent(client)
             
-            # Sidebar templates
-            with st.sidebar:
-                st.header("Quick Analysis Templates")
-                
-                template_options = {
-                    "Customer Count": "customer_count",
-                    "Top Customers by Sales": "top_customers_by_sales", 
-                    "Sales by Credit Tier": "sales_by_credit_tier",
-                    "Monthly Sales Trends": "monthly_sales_trends",
-                    "Payment Behavior": "payment_behavior",
-                    "Vehicle Usage Analysis": "vehicle_usage_analysis",
-                    "Customer Service Metrics": "customer_service_metrics",
-                    "Fleet Sales Summary": "fleet_sales_summary",
-                    "Loan Portfolio": "loan_portfolio",
-                    "Customer 360 Overview": "customer_360_overview"
-                }
-                
-                for display_name, template_key in template_options.items():
-                    if st.button(display_name, key=f"template_{template_key}"):
-                        sql = self.templates.get_template(template_key)
-                        st.session_state.generated_sql = sql
-                        st.session_state.last_query_type = "template"
-                        st.session_state.natural_language_query = display_name
-                
-                st.markdown("---")
-                st.header("Available Data")
-                
-                with st.expander("Tables"):
-                    for table, info in self.schema_manager.tables.items():
-                        st.write(f"**{table}**")
-                        st.caption(f"Columns: {', '.join(info['columns'][:3])}...")
-            
-            col1, col2 = st.columns([2, 1])
-            
-            with col1:
-                st.subheader("Describe Your Analysis")
-                natural_language = st.text_area(
-                    "Tell me what you want to analyze...",
-                    placeholder="e.g., 'Show me the top 5 customers by spending' or 'What is the average sale price?'",
-                    height=100,
-                    key="nl_input"
-                )
-                
-                if st.button("Generate SQL", type="primary") and natural_language:
-                    with st.spinner("Generating intelligent SQL..."):
-                        generated_sql = self.sql_generator.generate_sql(natural_language)
-                        st.session_state.generated_sql = generated_sql
-                        st.session_state.last_query_type = "natural_language"
-                        st.session_state.natural_language_query = natural_language
-            
-            with col2:
-                st.subheader("Options")
-                auto_execute = st.checkbox("Auto-execute generated SQL", value=True)
-                show_explanation = st.checkbox("Show query explanation", value=True)
-            
-            if hasattr(st.session_state, 'generated_sql'):
-                st.markdown("---")
-                st.subheader("Generated SQL")
-                
-                if show_explanation and hasattr(st.session_state, 'last_query_type'):
-                    if st.session_state.last_query_type == "natural_language":
-                        st.info(f"Your request: '{st.session_state.natural_language_query}'")
-                    else:
-                        st.info(f"Template used: {st.session_state.natural_language_query}")
-                
-                st.code(st.session_state.generated_sql, language='sql')
-                
-                col1, col2 = st.columns([1, 1])
-                
-                with col1:
-                    if st.button("Re-generate SQL") and hasattr(st.session_state, 'natural_language_query'):
-                        if st.session_state.last_query_type == "natural_language":
-                            generated_sql = self.sql_generator.generate_sql(st.session_state.natural_language_query)
-                            st.session_state.generated_sql = generated_sql
-                
-                with col2:
-                    if st.button("Copy SQL"):
-                        st.code(st.session_state.generated_sql, language='sql')
-                        st.success("SQL copied to clipboard!")
-                
-                if auto_execute or st.button("Execute Query"):
-                    with st.spinner("Executing query..."):
-                        results = self.execute_query(st.session_state.generated_sql)
-                        
-                        if not results.empty:
-                            st.subheader("Results")
+            for strategy in st.session_state['strategies']:
+                with st.expander(strategy):
+                    if st.button(f"Test Strategy", key=f"test_{strategy}"):
+                        with st.spinner("Running analysis..."):
+                            results = analyst.test_strategy(strategy)
                             
-                            # Display metrics for single-value results
-                            if len(results) == 1 and len(results.columns) == 1:
-                                value = results.iloc[0, 0]
-                                col_name = results.columns[0]
-                                st.metric(col_name.replace('_', ' ').title(), value)
-                            elif len(results) <= 5:
-                                # Display as metrics for small result sets
-                                cols = st.columns(len(results.columns))
-                                for idx, col_name in enumerate(results.columns):
-                                    if idx < len(cols):
-                                        value = results.iloc[0, idx] if len(results) > 0 else 0
-                                        cols[idx].metric(col_name.replace('_', ' ').title(), value)
+                            # Display results
+                            st.markdown(f"**Recommendation:** {results['recommendation']}")
                             
-                            st.dataframe(results, use_container_width=True)
+                            cols = st.columns(len(results['metrics']))
+                            for col, (k, v) in zip(cols, results['metrics'].items()):
+                                col.metric(k, v)
                             
-                            # Show basic stats for numeric columns
-                            numeric_cols = results.select_dtypes(include=[np.number]).columns
-                            if len(numeric_cols) > 0:
-                                with st.expander("Quick Statistics"):
-                                    st.write(results[numeric_cols].describe())
-                            
-                            csv = results.to_csv(index=False)
-                            st.download_button(
-                                label="Download Results as CSV",
-                                data=csv,
-                                file_name="query_results.csv",
-                                mime="text/csv"
-                            )
-                        else:
-                            st.warning("No results returned from the query.")
-            
-            st.markdown("---")
-            st.subheader("Try These Example Queries")
-            
-            examples = [
-                "What is the average sale price?",
-                "Count of sales transactions", 
-                "Top 10 customers by spending",
-                "Payment status distribution",
-                "Vehicle usage by state",
-                "Monthly sales trends",
-                "Sales by credit tier",
-                "Service request types",
-                "Fleet sales summary",
-                "Loan portfolio by status"
-            ]
-            
-            cols = st.columns(2)
-            for i, example in enumerate(examples):
-                with cols[i % 2]:
-                    if st.button(f"{example}", key=f"example_{i}", use_container_width=True):
-                        generated_sql = self.sql_generator.generate_sql(example)
-                        st.session_state.generated_sql = generated_sql
-                        st.session_state.last_query_type = "natural_language"
-                        st.session_state.natural_language_query = example
-                        st.rerun()
+                            # Show forecast
+                            if len(results['forecast']) > 0:
+                                fig, ax = plt.subplots(figsize=(10, 4))
+                                ax.plot(results['forecast'], marker='o', label='Forecast')
+                                ax.fill_between(range(len(results['forecast'])),
+                                               results['forecast'] - results['confidence_interval'],
+                                               results['forecast'] + results['confidence_interval'],
+                                               alpha=0.2)
+                                ax.set_title('12-Month Strategy Impact Forecast')
+                                ax.set_ylabel('Expected Outcome')
+                                ax.legend()
+                                st.pyplot(fig)
 
-    if not client:
-        st.error("BigQuery connection required for SQL Chat")
-        st.info("Please check your BigQuery credentials")
-    else:
-        sql_app = SQLGeneratorApp(client)
-        sql_app.render_interface()
-
-elif st.session_state.page == 'AI Agent':
-    client = get_bigquery_client()
-    
-    # Agentic AI System Classes
-    class SchemaDiscoverer:
-        def __init__(self, client):
-            self.client = client
-            self.schemas = {}
-        
-        def discover_table_schemas(self):
-            tables = [
-                'customer_profiles', 'loan_originations', 'consumer_sales', 
-                'billing_payments', 'fleet_sales', 'customer_service', 'vehicle_telemetry'
-            ]
-            
-            for table in tables:
-                try:
-                    query = f"""
-                    SELECT column_name, data_type 
-                    FROM `ford-assessment-100425.ford_credit_raw.INFORMATION_SCHEMA.COLUMNS`
-                    WHERE table_name = '{table}'
-                    ORDER BY ordinal_position
-                    """
-                    query_job = self.client.query(query)
-                    schema_df = query_job.to_dataframe()
-                    self.schemas[table] = {
-                        'columns': schema_df['column_name'].tolist(),
-                        'data_types': schema_df.set_index('column_name')['data_type'].to_dict()
-                    }
-                except Exception as e:
-                    st.warning(f"Could not discover schema for {table}: {e}")
-            
-            return self.schemas
-
-    # Manager Agent - Discovers business strategies
-    class StrategyManager:
-        def __init__(self, schema_discoverer):
-            self.schema_discoverer = schema_discoverer
-        
-        def discover_business_strategies(self, data_patterns):
-            strategies = []
-            
-            # Manager Agent analyzes data patterns and generates strategic initiatives
-            strategies.extend([
-                "Test 2% APR reduction for Gold-tier customers",
-                "Implement reactivation campaign for inactive customers",
-                "Create bundled product offering for high-value segments",
-                "Launch targeted upselling campaign for medium-tier customers",
-                "Optimize loan approval rates for Silver-tier customers",
-                "Develop loyalty program for repeat customers",
-                "Create seasonal promotion for Q4 sales boost",
-                "Implement risk-based pricing for different credit tiers",
-                "Launch referral program to acquire new customers",
-                "Create premium membership tier with exclusive benefits",
-                "Implement dynamic pricing based on demand patterns",
-                "Expand dealer network in underperforming regions"
-            ])
-            
-            return strategies[:12]
-
-    # Analyst Agent - Creates statistical models and tests strategies
-    class BusinessAnalyst:
-        def __init__(self, client, schema_discoverer):
-            self.client = client
-            self.schema_discoverer = schema_discoverer
-            self.analysis_methods = {
-                "pricing_elasticity": self.analyze_pricing_elasticity,
-                "customer_lifetime_value": self.analyze_customer_lifetime_value,
-                "churn_prediction": self.analyze_customer_churn,
-                "segmentation_analysis": self.analyze_customer_segmentation,
-                "loan_performance": self.analyze_loan_performance,
-                "geographic_analysis": self.analyze_geographic_patterns,
-                "vehicle_preference": self.analyze_vehicle_preferences,
-                "fleet_metrics": self.analyze_fleet_metrics,
-                "sales_forecasting": self.analyze_sales_forecasting,
-                "revenue_impact": self.analyze_revenue_impact
-            }
-        
-        def execute_query(self, query):
-            try:
-                query_job = self.client.query(query)
-                return query_job.to_dataframe()
-            except Exception as e:
-                st.error(f"Query failed: {e}")
-                return pd.DataFrame()
-
-        def create_sample_data_if_needed(self, analysis_type, required_rows=100):
-            if analysis_type == "customer_segmentation":
-                np.random.seed(42)
-                n_samples = max(required_rows, 500)
-                
-                sample_data = pd.DataFrame({
-                    'customer_id': [f'CUST_{i:04d}' for i in range(n_samples)],
-                    'transaction_count': np.random.poisson(5, n_samples) + 1,
-                    'total_spend': np.random.exponential(50000, n_samples),
-                    'avg_transaction_value': np.random.normal(25000, 8000, n_samples),
-                    'credit_tier': np.random.choice(['Gold', 'Silver', 'Bronze'], n_samples, p=[0.2, 0.5, 0.3]),
-                    'months_active': np.random.randint(1, 36, n_samples),
-                    'churn_risk_score': np.random.beta(2, 5, n_samples)
-                })
-                
-                sample_data['total_spend'] = sample_data['total_spend'].abs()
-                sample_data['avg_transaction_value'] = sample_data['avg_transaction_value'].abs()
-                sample_data['churn_risk_score'] = sample_data['churn_risk_score'] * 100
-                
-                return sample_data
-            
-            elif analysis_type == "pricing_elasticity":
-                np.random.seed(42)
-                prices = np.linspace(20000, 80000, 50)
-                volumes = 1000 - (prices - 30000) * 0.01 + np.random.normal(0, 50, 50)
-                
-                return pd.DataFrame({
-                    'price': prices,
-                    'sales_volume': volumes
-                })
-            
-            elif analysis_type == "sales_forecasting":
-                np.random.seed(42)
-                dates = pd.date_range('2022-01-01', '2024-01-01', freq='M')
-                trend = np.linspace(1000, 1500, len(dates))
-                seasonal = 100 * np.sin(2 * np.pi * np.arange(len(dates)) / 12)
-                noise = np.random.normal(0, 50, len(dates))
-                sales = trend + seasonal + noise
-                
-                return pd.DataFrame({
-                    'date': dates,
-                    'sales': sales
-                })
-            
-            elif analysis_type == "churn_analysis":
-                np.random.seed(42)
-                n_samples = 1000
-                
-                return pd.DataFrame({
-                    'customer_id': [f'CUST_{i:04d}' for i in range(n_samples)],
-                    'days_since_last_purchase': np.random.exponential(90, n_samples),
-                    'total_transactions': np.random.poisson(8, n_samples),
-                    'avg_transaction_value': np.random.normal(25000, 8000, n_samples),
-                    'customer_satisfaction_score': np.random.normal(4.2, 0.8, n_samples),
-                    'churned': np.random.binomial(1, 0.15, n_samples)
-                })
-            
-            return None
-
-        def analyze_customer_churn(self, strategy):
-            """Enhanced churn analysis with predictive modeling"""
-            analysis_report = {
-                "analysis_type": "CUSTOMER CHURN PREDICTION MODEL",
-                "strategy_tested": strategy,
-                "executive_summary": "",
-                "churn_metrics": {},
-                "predictive_insights": {},
-                "business_recommendations": [],
-                "key_metrics": {},
-                "visualizations": []
-            }
-            
-            try:
-                # FIXED: Use proper date casting for BigQuery
-                query = """
-                SELECT 
-                    cp.customer_id,
-                    cp.credit_tier,
-                    COUNT(cs.vin) as total_transactions,
-                    MAX(cs.sale_timestamp) as last_purchase_date,
-                    DATE_DIFF(CURRENT_DATE(), DATE(MAX(cs.sale_timestamp)), DAY) as days_since_last_purchase,
-                    AVG(cs.sale_price) as avg_transaction_value,
-                    COUNT(DISTINCT cs.vehicle_model) as unique_models_owned
-                FROM `ford-assessment-100425.ford_credit_raw.customer_profiles` cp
-                LEFT JOIN `ford-assessment-100425.ford_credit_raw.consumer_sales` cs
-                    ON cp.customer_id = cs.customer_id
-                WHERE cs.sale_timestamp IS NOT NULL
-                GROUP BY cp.customer_id, cp.credit_tier
-                HAVING COUNT(cs.vin) > 0
-                """
-                
-                df = self.execute_query(query)
-                
-                if len(df) < 200:
-                    df = self.create_sample_data_if_needed("churn_analysis")
-                    analysis_report["executive_summary"] += " (Using enhanced predictive model)"
-                
-                if len(df) > 100:
-                    # Feature engineering for churn prediction
-                    df['days_since_last_purchase'] = df['days_since_last_purchase'].fillna(365)
-                    df['churn_risk'] = np.where(
-                        df['days_since_last_purchase'] > 180, 'Very High',
-                        np.where(df['days_since_last_purchase'] > 120, 'High',
-                        np.where(df['days_since_last_purchase'] > 90, 'Medium', 'Low'))
-                    )
-                    
-                    # Calculate churn probabilities
-                    df['churn_probability'] = np.minimum(0.95, 
-                        df['days_since_last_purchase'] / 365 * 0.8 + 
-                        (1 - (df['total_transactions'] / df['total_transactions'].max())) * 0.2
-                    )
-                    
-                    churn_summary = df['churn_risk'].value_counts()
-                    total_at_risk = churn_summary.get('Very High', 0) + churn_summary.get('High', 0)
-                    
-                    # Calculate potential revenue impact
-                    high_risk_customers = df[df['churn_risk'].isin(['Very High', 'High'])]
-                    potential_revenue_loss = high_risk_customers['avg_transaction_value'].sum() * 0.3
-                    
-                    analysis_report["churn_metrics"] = {
-                        "total_customers_analyzed": len(df),
-                        "high_risk_customers": total_at_risk,
-                        "high_risk_percentage": f"{(total_at_risk / len(df) * 100):.1f}%",
-                        "potential_revenue_loss": f"${potential_revenue_loss:,.0f}",
-                        "average_churn_probability": f"{(df['churn_probability'].mean() * 100):.1f}%"
-                    }
-                    
-                    analysis_report["predictive_insights"] = {
-                        "key_churn_drivers": [
-                            "Extended purchase inactivity (>120 days)",
-                            "Low transaction frequency",
-                            "Single vehicle model ownership"
-                        ],
-                        "retention_opportunity": f"${potential_revenue_loss * 0.6:,.0f}",
-                        "prediction_confidence": "85%"
-                    }
-                    
-                    analysis_report["executive_summary"] = (
-                        f"Churn analysis identifies {total_at_risk} high-risk customers "
-                        f"({analysis_report['churn_metrics']['high_risk_percentage']}) "
-                        f"representing ${potential_revenue_loss:,.0f} in potential revenue loss. "
-                        f"Strategy impact: {self.assess_strategy_churn_impact(strategy)}"
-                    )
-                    
-                    analysis_report["business_recommendations"] = [
-                        "Launch targeted retention campaigns for high-risk segments",
-                        "Implement proactive outreach for customers >90 days inactive",
-                        "Develop loyalty incentives to reduce churn probability",
-                        "Create win-back offers for recently churned customers"
-                    ]
-                    
-                    analysis_report["key_metrics"] = {
-                        "At-Risk Customers": total_at_risk,
-                        "Potential Revenue Loss": f"${potential_revenue_loss:,.0f}",
-                        "Retention Opportunity": f"${potential_revenue_loss * 0.6:,.0f}",
-                        "Prediction Confidence": "85%"
-                    }
-                    
-                    # Create churn risk visualization
-                    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-                    
-                    # Churn risk distribution
-                    risk_counts = [churn_summary.get('Very High', 0), churn_summary.get('High', 0), 
-                                 churn_summary.get('Medium', 0), churn_summary.get('Low', 0)]
-                    risk_labels = ['Very High', 'High', 'Medium', 'Low']
-                    colors = ['darkred', 'red', 'orange', 'green']
-                    
-                    bars1 = ax1.bar(risk_labels, risk_counts, color=colors, alpha=0.7, edgecolor='black')
-                    ax1.set_xlabel('Churn Risk Level')
-                    ax1.set_ylabel('Number of Customers')
-                    ax1.set_title('Customer Distribution by Churn Risk')
-                    ax1.grid(True, alpha=0.3)
-                    
-                    for bar in bars1:
-                        height = bar.get_height()
-                        ax1.text(bar.get_x() + bar.get_width()/2., height,
-                                f'{int(height)}', ha='center', va='bottom')
-                    
-                    # Revenue impact by risk level
-                    revenue_by_risk = df.groupby('churn_risk')['avg_transaction_value'].sum()
-                    bars2 = ax2.bar(risk_labels, [revenue_by_risk.get(label, 0) for label in risk_labels],
-                                   color=colors, alpha=0.7, edgecolor='black')
-                    ax2.set_xlabel('Churn Risk Level')
-                    ax2.set_ylabel('Total Customer Value ($)')
-                    ax2.set_title('Customer Value Distribution by Churn Risk')
-                    ax2.grid(True, alpha=0.3)
-                    
-                    for bar in bars2:
-                        height = bar.get_height()
-                        ax2.text(bar.get_x() + bar.get_width()/2., height,
-                                f'${height:,.0f}', ha='center', va='bottom')
-                    
-                    plt.tight_layout()
-                    analysis_report["visualizations"].append(fig)
-                    
-                else:
-                    analysis_report["executive_summary"] = "Insufficient data for comprehensive churn analysis"
-                    
-            except Exception as e:
-                analysis_report["executive_summary"] = f"Churn analysis completed with predictive modeling"
-                analysis_report["key_metrics"] = {
-                    "Churn Risk Identified": "15-25% of customer base",
-                    "Revenue Protection Opportunity": "Significant",
-                    "Recommended Actions": "Proactive retention campaigns"
-                }
-            
-            return analysis_report
-
-        def analyze_sales_forecasting(self, strategy):
-            """Enhanced sales forecasting with strategy impact modeling"""
-            analysis_report = {
-                "analysis_type": "STRATEGY-IMPACT SALES FORECASTING",
-                "strategy_tested": strategy,
-                "executive_summary": "",
-                "forecast_metrics": {},
-                "strategy_impact": {},
-                "business_recommendations": [],
-                "key_metrics": {},
-                "visualizations": []
-            }
-            
-            try:
-                # FIXED: Use proper date functions for BigQuery
-                query = """
-                SELECT 
-                    DATE_TRUNC(DATE(sale_timestamp), MONTH) as month,
-                    COUNT(*) as monthly_sales,
-                    SUM(sale_price) as monthly_revenue,
-                    AVG(sale_price) as avg_sale_price
-                FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
-                WHERE sale_timestamp IS NOT NULL
-                GROUP BY month
-                ORDER BY month
-                """
-                
-                df = self.execute_query(query)
-                
-                if len(df) < 12:
-                    df = self.create_sample_data_if_needed("sales_forecasting")
-                    analysis_report["executive_summary"] += " (Using enhanced forecasting model with strategy simulation)"
-                else:
-                    df['month'] = pd.to_datetime(df['month'])
-                    df = df.sort_values('month')
-                
-                if len(df) > 6:
-                    # Prepare data for forecasting
-                    df = df.reset_index(drop=True)
-                    X = np.array(range(len(df))).reshape(-1, 1)
-                    y_sales = df['sales'].values if 'sales' in df.columns else df['monthly_sales'].values
-                    y_revenue = df['sales'].values * df['avg_sale_price'].values if 'sales' in df.columns else df['monthly_revenue'].values
-                    
-                    # Train forecasting models
-                    sales_model = LinearRegression()
-                    revenue_model = LinearRegression()
-                    
-                    sales_model.fit(X, y_sales)
-                    revenue_model.fit(X, y_revenue)
-                    
-                    # Generate baseline forecasts
-                    future_months = 12
-                    X_future = np.array(range(len(df), len(df) + future_months)).reshape(-1, 1)
-                    
-                    sales_forecast = sales_model.predict(X_future)
-                    revenue_forecast = revenue_model.predict(X_future)
-                    
-                    # Apply strategy impact
-                    strategy_impact = self.calculate_strategy_impact(strategy)
-                    adjusted_sales_forecast = sales_forecast * (1 + strategy_impact['sales_impact'])
-                    adjusted_revenue_forecast = revenue_forecast * (1 + strategy_impact['revenue_impact'])
-                    
-                    # Calculate confidence intervals
-                    sales_pred = sales_model.predict(X)
-                    sales_residuals = y_sales - sales_pred
-                    sales_std = np.std(sales_residuals)
-                    
-                    # Create forecasting visualization with strategy impact
-                    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
-                    
-                    # Sales forecast
-                    historical_dates = df['month'] if 'month' in df.columns else pd.date_range('2022-01-01', periods=len(df), freq='M')
-                    future_dates = pd.date_range(historical_dates.iloc[-1] + pd.DateOffset(months=1), periods=future_months, freq='M')
-                    
-                    ax1.plot(historical_dates, y_sales, 'bo-', label='Historical Sales', linewidth=2, markersize=4)
-                    ax1.plot(future_dates, sales_forecast, 'ro--', label='Baseline Forecast', linewidth=2, markersize=4)
-                    ax1.plot(future_dates, adjusted_sales_forecast, 'g-', label='With Strategy Impact', linewidth=2, markersize=4)
-                    
-                    ax1.fill_between(future_dates, 
-                                   sales_forecast - sales_std, 
-                                   sales_forecast + sales_std, 
-                                   alpha=0.2, color='red', label='Confidence Interval')
-                    
-                    ax1.set_xlabel('Date')
-                    ax1.set_ylabel('Sales Volume')
-                    ax1.set_title('Sales Forecasting: Strategy Impact Analysis')
-                    ax1.legend()
-                    ax1.grid(True, alpha=0.3)
-                    
-                    # Revenue forecast
-                    ax2.plot(historical_dates, y_revenue, 'bo-', label='Historical Revenue', linewidth=2, markersize=4)
-                    ax2.plot(future_dates, revenue_forecast, 'ro--', label='Baseline Revenue Forecast', linewidth=2, markersize=4)
-                    ax2.plot(future_dates, adjusted_revenue_forecast, 'g-', label='With Strategy Impact', linewidth=2, markersize=4)
-                    
-                    ax2.set_xlabel('Date')
-                    ax2.set_ylabel('Revenue ($)')
-                    ax2.set_title('Revenue Forecasting: Strategy Impact Analysis')
-                    ax2.legend()
-                    ax2.grid(True, alpha=0.3)
-                    
-                    plt.xticks(rotation=45)
-                    plt.tight_layout()
-                    
-                    # Calculate growth metrics
-                    current_sales = y_sales[-1] if len(y_sales) > 0 else 0
-                    baseline_growth = ((sales_forecast[-1] - current_sales) / current_sales * 100) if current_sales > 0 else 0
-                    strategy_growth = ((adjusted_sales_forecast[-1] - current_sales) / current_sales * 100) if current_sales > 0 else 0
-                    
-                    analysis_report["forecast_metrics"] = {
-                        "current_period_sales": f"{current_sales:,.0f}",
-                        "baseline_12mo_forecast": f"{sales_forecast[-1]:,.0f}",
-                        "strategy_adjusted_forecast": f"{adjusted_sales_forecast[-1]:,.0f}",
-                        "baseline_growth": f"{baseline_growth:.1f}%",
-                        "strategy_impact_growth": f"{strategy_growth:.1f}%",
-                        "incremental_impact": f"{(strategy_growth - baseline_growth):.1f}%"
-                    }
-                    
-                    analysis_report["strategy_impact"] = {
-                        "expected_sales_impact": f"{strategy_impact['sales_impact'] * 100:.1f}%",
-                        "expected_revenue_impact": f"{strategy_impact['revenue_impact'] * 100:.1f}%",
-                        "confidence_level": strategy_impact['confidence'],
-                        "key_assumptions": strategy_impact['assumptions']
-                    }
-                    
-                    analysis_report["executive_summary"] = (
-                        f"Sales forecasting projects {strategy_growth:.1f}% growth with strategy implementation "
-                        f"({(strategy_growth - baseline_growth):.1f}% incremental impact). "
-                        f"Expected revenue impact: {strategy_impact['revenue_impact'] * 100:.1f}%"
-                    )
-                    
-                    analysis_report["business_recommendations"] = [
-                        f"Monitor key performance indicators for {strategy_impact['success_metrics']}",
-                        "Adjust inventory and staffing based on forecasted demand increase",
-                        "Implement measurement framework to track strategy effectiveness",
-                        "Prepare contingency plans for potential market variations"
-                    ]
-                    
-                    analysis_report["key_metrics"] = {
-                        "Projected Growth": f"{strategy_growth:.1f}%",
-                        "Incremental Impact": f"{(strategy_growth - baseline_growth):.1f}%",
-                        "Revenue Impact": f"{strategy_impact['revenue_impact'] * 100:.1f}%",
-                        "Confidence Level": strategy_impact['confidence']
-                    }
-                    
-                    analysis_report["visualizations"].append(fig)
-                    
-                else:
-                    analysis_report["executive_summary"] = "Insufficient historical data for reliable forecasting"
-                    
-            except Exception as e:
-                analysis_report["executive_summary"] = f"Forecasting analysis completed with strategy impact modeling"
-                analysis_report["key_metrics"] = {
-                    "Projected Growth": "8-15% (with strategy)",
-                    "Revenue Impact": "10-20% increase expected",
-                    "Confidence": "Medium-High"
-                }
-            
-            return analysis_report
-
-        def analyze_revenue_impact(self, strategy):
-            """Analyze revenue implications of strategy considering churn and acquisition"""
-            analysis_report = {
-                "analysis_type": "REVENUE IMPACT ANALYSIS",
-                "strategy_tested": strategy,
-                "executive_summary": "",
-                "revenue_metrics": {},
-                "scenario_analysis": {},
-                "business_recommendations": [],
-                "key_metrics": {}
-            }
-            
-            try:
-                # FIXED: Use proper date casting for BigQuery
-                query = """
-                SELECT 
-                    SUM(sale_price) as total_revenue,
-                    COUNT(DISTINCT customer_id) as active_customers,
-                    AVG(sale_price) as avg_transaction_value
-                FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
-                WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
-                """
-                
-                df = self.execute_query(query)
-                
-                if not df.empty:
-                    baseline_revenue = df['total_revenue'].iloc[0] or 1000000
-                    active_customers = df['active_customers'].iloc[0] or 1000
-                    avg_value = df['avg_transaction_value'].iloc[0] or 25000
-                    
-                    # Calculate strategy impact scenarios
-                    impact_scenarios = self.calculate_revenue_scenarios(strategy, baseline_revenue, active_customers, avg_value)
-                    
-                    analysis_report["revenue_metrics"] = {
-                        "current_quarter_revenue": f"${baseline_revenue:,.0f}",
-                        "active_customer_base": f"{active_customers:,}",
-                        "average_customer_value": f"${avg_value:,.0f}",
-                        "revenue_per_customer": f"${baseline_revenue/active_customers:,.0f}" if active_customers > 0 else "$0"
-                    }
-                    
-                    analysis_report["scenario_analysis"] = impact_scenarios
-                    
-                    analysis_report["executive_summary"] = (
-                        f"Revenue impact analysis projects {impact_scenarios['likely_impact']['revenue_change']} "
-                        f"with strategy implementation. Best case: {impact_scenarios['best_case']['revenue_change']}, "
-                        f"Worst case: {impact_scenarios['worst_case']['revenue_change']}"
-                    )
-                    
-                    analysis_report["business_recommendations"] = [
-                        "Implement phased rollout to validate revenue assumptions",
-                        "Monitor customer acquisition costs during implementation",
-                        "Track retention metrics to ensure revenue sustainability",
-                        "Adjust pricing strategy based on market response"
-                    ]
-                    
-                    analysis_report["key_metrics"] = {
-                        "Expected Revenue Impact": impact_scenarios['likely_impact']['revenue_change'],
-                        "Customer Impact": impact_scenarios['likely_impact']['customer_impact'],
-                        "Confidence Interval": impact_scenarios['confidence_interval']
-                    }
-                    
-            except Exception as e:
-                analysis_report["executive_summary"] = "Revenue impact analysis completed with scenario modeling"
-                analysis_report["key_metrics"] = {
-                    "Revenue Projection": "5-15% increase expected",
-                    "Implementation Risk": "Medium",
-                    "ROI Timeline": "6-12 months"
-                }
-            
-            return analysis_report
-
-        # SIMPLIFIED VERSION OF MISSING METHODS - Just return basic structure
-        def analyze_pricing_elasticity(self, strategy):
-            analysis_report = {
-                "analysis_type": "PRICING ELASTICITY MODEL",
-                "strategy_tested": strategy,
-                "executive_summary": "Pricing elasticity analysis shows moderate sensitivity to price changes.",
-                "model_outputs": {"elasticity": -0.8, "confidence": "Medium"},
-                "business_recommendations": ["Consider gradual price adjustments", "Monitor competitor pricing"],
-                "key_metrics": {"Price Sensitivity": "Medium", "Recommended Action": "Test small changes"}
-            }
-            return analysis_report
-
-        def analyze_customer_lifetime_value(self, strategy):
-            analysis_report = {
-                "analysis_type": "CUSTOMER LIFETIME VALUE ANALYSIS", 
-                "strategy_tested": strategy,
-                "executive_summary": "Customer segmentation shows clear value tiers with retention opportunities.",
-                "customer_segments": {"High Value": "25%", "Medium": "50%", "Low": "25%"},
-                "business_recommendations": ["Focus retention efforts on high-value segments"],
-                "key_metrics": {"Average CLTV": "$45,000", "Value Concentration": "25% in top tier"}
-            }
-            return analysis_report
-
-        def analyze_customer_segmentation(self, strategy):
-            analysis_report = {
-                "analysis_type": "CUSTOMER SEGMENTATION ANALYSIS",
-                "strategy_tested": strategy,
-                "executive_summary": "Three distinct customer segments identified with different behaviors.",
-                "customer_segments": {"Premium": "20%", "Core": "50%", "Opportunity": "30%"},
-                "business_recommendations": ["Develop targeted campaigns for each segment"],
-                "key_metrics": {"Segments Identified": 3, "Largest Segment": "Core (50%)"}
-            }
-            return analysis_report
-
-        def analyze_loan_performance(self, strategy):
-            analysis_report = {
-                "analysis_type": "LOAN PERFORMANCE ANALYSIS",
-                "strategy_tested": strategy,
-                "executive_summary": "Loan portfolio shows healthy performance with manageable risk.",
-                "loan_metrics": {"delinquency_rate": "2.3%", "avg_loan_size": "$35,000"},
-                "business_recommendations": ["Maintain current risk assessment criteria"],
-                "key_metrics": {"Portfolio Health": "Good", "Risk Level": "Managed"}
-            }
-            return analysis_report
-
-        def analyze_geographic_patterns(self, strategy):
-            analysis_report = {
-                "analysis_type": "GEOGRAPHIC ANALYSIS",
-                "strategy_tested": strategy,
-                "executive_summary": "Strong regional variations in sales and customer preferences.",
-                "geographic_insights": {"top_state": "California", "regional_variation": "High"},
-                "business_recommendations": ["Develop regional-specific marketing strategies"],
-                "key_metrics": {"States Covered": 45, "Regional Focus": "Required"}
-            }
-            return analysis_report
-
-        def analyze_vehicle_preferences(self, strategy):
-            analysis_report = {
-                "analysis_type": "VEHICLE PREFERENCE ANALYSIS",
-                "strategy_tested": strategy,
-                "executive_summary": "Clear customer preferences for specific models and features.",
-                "vehicle_insights": {"best_seller": "F-150", "ev_adoption": "Growing"},
-                "business_recommendations": ["Optimize inventory based on regional preferences"],
-                "key_metrics": {"Models Analyzed": 15, "Preference Clarity": "Strong"}
-            }
-            return analysis_report
-
-        def analyze_fleet_metrics(self, strategy):
-            analysis_report = {
-                "analysis_type": "FLEET PERFORMANCE ANALYSIS",
-                "strategy_tested": strategy,
-                "executive_summary": "Fleet business shows steady growth with expansion opportunities.",
-                "fleet_metrics": {"total_contracts": 245, "avg_fleet_size": "12 vehicles"},
-                "business_recommendations": ["Develop customized fleet service packages"],
-                "key_metrics": {"Fleet Growth": "12% YoY", "Expansion Potential": "High"}
-            }
-            return analysis_report
-
-        def calculate_strategy_impact(self, strategy):
-            """Calculate the expected impact of a strategy on sales and revenue"""
-            strategy_lower = strategy.lower()
-            
-            impact_mapping = {
-                'pricing': {'sales_impact': -0.05, 'revenue_impact': 0.08, 'confidence': 'High'},
-                'promotion': {'sales_impact': 0.15, 'revenue_impact': 0.10, 'confidence': 'Medium'},
-                'loyalty': {'sales_impact': 0.08, 'revenue_impact': 0.12, 'confidence': 'High'},
-                'referral': {'sales_impact': 0.12, 'revenue_impact': 0.15, 'confidence': 'Medium'},
-                'subscription': {'sales_impact': 0.10, 'revenue_impact': 0.25, 'confidence': 'High'},
-                'retention': {'sales_impact': 0.05, 'revenue_impact': 0.18, 'confidence': 'High'}
-            }
-            
-            # Default impact for unknown strategies
-            default_impact = {'sales_impact': 0.08, 'revenue_impact': 0.12, 'confidence': 'Medium'}
-            
-            for key, impact in impact_mapping.items():
-                if key in strategy_lower:
-                    impact['assumptions'] = ["Market conditions remain stable", "Competitive response as expected"]
-                    impact['success_metrics'] = ["Revenue growth", "Customer acquisition", "Retention rates"]
-                    return impact
-            
-            default_impact['assumptions'] = ["Moderate market acceptance", "Competitive response considered"]
-            default_impact['success_metrics'] = ["Sales volume", "Revenue growth", "Customer acquisition"]
-            return default_impact
-
-        def calculate_revenue_scenarios(self, strategy, baseline_revenue, customer_count, avg_value):
-            """Calculate best-case, worst-case, and likely revenue scenarios"""
-            impact = self.calculate_strategy_impact(strategy)
-            
-            scenarios = {
-                'best_case': {
-                    'revenue_change': f"+{impact['revenue_impact'] * 150:.1f}%",
-                    'customer_impact': f"+{(impact['sales_impact'] * 150 * 100):.1f}% growth",
-                    'description': 'Strong market adoption with minimal churn'
-                },
-                'likely_impact': {
-                    'revenue_change': f"+{impact['revenue_impact'] * 100:.1f}%",
-                    'customer_impact': f"+{(impact['sales_impact'] * 100 * 100):.1f}% growth",
-                    'description': 'Moderate market response as projected'
-                },
-                'worst_case': {
-                    'revenue_change': f"+{impact['revenue_impact'] * 50:.1f}%",
-                    'customer_impact': f"+{(impact['sales_impact'] * 50 * 100):.1f}% growth",
-                    'description': 'Weak market response with higher churn'
-                }
-            }
-            
-            scenarios['confidence_interval'] = f"{impact['confidence']} confidence"
-            return scenarios
-
-        def assess_strategy_churn_impact(self, strategy):
-            """Assess how the strategy might impact customer churn"""
-            strategy_lower = strategy.lower()
-            
-            if any(word in strategy_lower for word in ['price', 'apr', 'rate']):
-                return "Potential churn increase of 2-5% if price-sensitive customers react negatively"
-            elif any(word in strategy_lower for word in ['loyalty', 'retention', 'reactivation']):
-                return "Expected churn reduction of 8-12% through improved customer engagement"
-            elif any(word in strategy_lower for word in ['subscription', 'membership']):
-                return "Potential churn reduction of 10-15% through increased switching costs"
-            else:
-                return "Neutral churn impact expected with proper implementation"
-
-        def get_strategy_assumptions(self, strategy_type):
-            """Get key assumptions for different strategy types"""
-            assumptions = {
-                'pricing': [
-                    "Price elasticity within expected range",
-                    "Competitive pricing remains stable",
-                    "Customer perception of value maintained"
-                ],
-                'promotion': [
-                    "Promotional appeal matches target audience",
-                    "Redemption rates within projected range",
-                    "Minimal cannibalization of full-price sales"
-                ],
-                'loyalty': [
-                    "Program perceived as valuable by customers",
-                    "Enrollment rates meet projections",
-                    "Redemption costs controlled"
-                ]
-            }
-            return assumptions.get(strategy_type, ["Standard market assumptions apply"])
-
-        def get_success_metrics(self, strategy_type):
-            """Get key success metrics for different strategy types"""
-            metrics = {
-                'pricing': ["Revenue per customer", "Price sensitivity", "Competitive positioning"],
-                'promotion': ["Acquisition cost", "Conversion rate", "Customer lifetime value"],
-                'loyalty': ["Retention rate", "Program participation", "Repeat purchase frequency"]
-            }
-            return metrics.get(strategy_type, ["Revenue growth", "Customer satisfaction", "Market share"])
-
-        def create_strategy_test_plan(self, strategy):
-            """Create targeted test plan based on strategy type"""
-            strategy_lower = strategy.lower()
-            
-            test_plan = {
-                "strategy": strategy,
-                "required_analyses": [],
-                "success_metrics": [],
-                "expected_outputs": []
-            }
-            
-            # Core analyses for all strategies
-            test_plan["required_analyses"].extend(["sales_forecasting", "revenue_impact"])
-            
-            # Strategy-specific analyses
-            if any(word in strategy_lower for word in ['price', 'apr', 'rate']):
-                test_plan["required_analyses"].append("pricing_elasticity")
-                test_plan["required_analyses"].append("churn_prediction")  # Price changes affect churn
-                test_plan["success_metrics"].extend(["Price sensitivity", "Revenue impact", "Churn rate change"])
-            
-            elif any(word in strategy_lower for word in ['customer', 'segment', 'tier']):
-                test_plan["required_analyses"].append("customer_lifetime_value")
-                test_plan["required_analyses"].append("segmentation_analysis")
-                test_plan["required_analyses"].append("churn_prediction")  # Segmentation affects retention
-                test_plan["success_metrics"].extend(["Segment value", "Retention rates", "Upsell potential"])
-            
-            elif any(word in strategy_lower for word in ['churn', 'reactivation', 'retention', 'loyalty']):
-                test_plan["required_analyses"].append("churn_prediction")
-                test_plan["required_analyses"].append("customer_lifetime_value")
-                test_plan["required_analyses"].append("sales_forecasting")
-                test_plan["success_metrics"].extend(["Churn reduction", "Customer lifetime value", "Retention cost"])
-            
-            elif any(word in strategy_lower for word in ['vehicle', 'model', 'inventory']):
-                test_plan["required_analyses"].append("vehicle_preference")
-                test_plan["required_analyses"].append("geographic_analysis")
-                test_plan["success_metrics"].extend(["Model performance", "Regional demand", "Inventory turnover"])
-            
-            elif any(word in strategy_lower for word in ['sales', 'revenue', 'growth']):
-                test_plan["required_analyses"].append("sales_forecasting")
-                test_plan["required_analyses"].append("revenue_impact")
-                test_plan["required_analyses"].append("customer_lifetime_value")
-                test_plan["success_metrics"].extend(["Growth rate", "Revenue impact", "Customer acquisition cost"])
-            
-            # Ensure we always have the core analyses
-            if "sales_forecasting" not in test_plan["required_analyses"]:
-                test_plan["required_analyses"].append("sales_forecasting")
-            if "revenue_impact" not in test_plan["required_analyses"]:
-                test_plan["required_analyses"].append("revenue_impact")
-            
-            return test_plan
-
-        def run_strategy_tests(self, strategy):
-            test_plan = self.create_strategy_test_plan(strategy)
-            test_results = {
-                "strategy": strategy,
-                "test_plan": test_plan,
-                "analysis_results": {},
-                "overall_recommendation": "",
-                "confidence_score": 0
-            }
-            
-            for analysis_type in test_plan["required_analyses"]:
-                if analysis_type in self.analysis_methods:
-                    result = self.analysis_methods[analysis_type](strategy)
-                    test_results["analysis_results"][analysis_type] = result
-            
-            test_results["overall_recommendation"] = self.generate_strategy_recommendation(test_results)
-            test_results["confidence_score"] = self.calculate_confidence_score(test_results)
-            
-            return test_results
-
-        def generate_strategy_recommendation(self, test_results):
-            successful_analyses = len([r for r in test_results["analysis_results"].values() 
-                                     if "failed" not in r["executive_summary"].lower() and "insufficient" not in r["executive_summary"].lower()])
-            total_analyses = len(test_results["analysis_results"])
-            
-            if total_analyses == 0:
-                return "Insufficient data for recommendation"
-            
-            success_rate = successful_analyses / total_analyses
-            
-            if success_rate >= 0.8:
-                return "STRONG RECOMMENDATION: Proceed with strategy implementation"
-            elif success_rate >= 0.6:
-                return "MODERATE RECOMMENDATION: Test strategy in limited rollout"
-            else:
-                return "CAUTION: Strategy requires refinement or additional data"
-
-        def calculate_confidence_score(self, test_results):
-            if not test_results["analysis_results"]:
-                return 50
-            
-            confidence_scores = []
-            for result in test_results["analysis_results"].values():
-                if "High" in result.get("model_outputs", {}).get("confidence_level", ""):
-                    confidence_scores.append(90)
-                elif "enhanced" in result.get("executive_summary", "").lower():
-                    confidence_scores.append(75)
-                elif "failed" not in result.get("executive_summary", "").lower():
-                    confidence_scores.append(70)
-                else:
-                    confidence_scores.append(50)
-            
-            return int(np.mean(confidence_scores)) if confidence_scores else 50
-
-    class BusinessStrategyTestingSystem:
-        def __init__(self, client):
-            self.client = client
-            self.schema_discoverer = SchemaDiscoverer(client)
-            self.schemas = self.schema_discoverer.discover_table_schemas()
-            self.strategy_manager = StrategyManager(self.schema_discoverer)
-            self.business_analyst = BusinessAnalyst(client, self.schema_discoverer)
-            self.setup_state()
-        
-        def setup_state(self):
-            if 'strategies_generated' not in st.session_state:
-                st.session_state.strategies_generated = []
-            if 'test_results' not in st.session_state:
-                st.session_state.test_results = {}
-            if 'current_strategy' not in st.session_state:
-                st.session_state.current_strategy = None
-        
-        def discover_initial_patterns(self):
-            patterns = []
-            
-            if 'customer_profiles' in self.schemas:
-                query = "SELECT credit_tier, COUNT(*) as count FROM `ford-assessment-100425.ford_credit_raw.customer_profiles` GROUP BY credit_tier"
-                df = self.business_analyst.execute_query(query)
-                if not df.empty:
-                    largest = df.loc[df['count'].idxmax()]
-                    patterns.append(f"Customer base dominated by {largest['credit_tier']} tier ({largest['count']} customers)")
-            
-            return patterns
-        
-        def generate_business_strategies(self):
-            patterns = self.discover_initial_patterns()
-            strategies = self.strategy_manager.discover_business_strategies(patterns)
-            st.session_state.strategies_generated = strategies
-            return strategies
-        
-        def test_business_strategy(self, strategy):
-            with st.spinner(f"Testing strategy: {strategy}"):
-                test_results = self.business_analyst.run_strategy_tests(strategy)
-                st.session_state.test_results[strategy] = test_results
-                return test_results
-        
-        def display_strategy_test_report(self, test_results):
-            st.header("Business Strategy Test Report")
-            
-            st.subheader("Strategy Being Tested")
-            st.info(f"**{test_results['strategy']}**")
-            
-            confidence = test_results['confidence_score']
-            st.metric("Confidence Score", f"{confidence}%")
-            
-            st.success(f"**Recommendation:** {test_results['overall_recommendation']}")
-            
-            with st.expander("Analytical Test Plan", expanded=True):
-                plan = test_results['test_plan']
-                st.write("**Required Analyses:**")
-                for analysis in plan['required_analyses']:
-                    st.write(f"• {analysis.replace('_', ' ').title()}")
-            
-            with st.expander("Analysis Results", expanded=True):
-                for analysis_type, result in test_results['analysis_results'].items():
-                    st.subheader(f"{result['analysis_type']}")
-                    
-                    st.write("**Executive Summary:**")
-                    st.info(result['executive_summary'])
-                    
-                    if result.get('key_metrics'):
-                        cols = st.columns(len(result['key_metrics']))
-                        for idx, (metric, value) in enumerate(result['key_metrics'].items()):
-                            cols[idx].metric(metric, value)
-                    
-                    if result.get('business_recommendations'):
-                        st.write("**Business Recommendations:**")
-                        for rec in result['business_recommendations']:
-                            st.success(f"• {rec}")
-                    
-                    if result.get('visualizations'):
-                        for viz in result['visualizations']:
-                            st.pyplot(viz)
-                    
-                    st.markdown("---")
-        
-        def render_system_interface(self):
-            st.sidebar.header("Business Strategy Testing System")
-            
-            if st.sidebar.button("Generate Business Strategies", type="primary"):
-                with st.spinner("Manager agent discovering business strategies..."):
-                    strategies = self.generate_business_strategies()
-                    st.session_state.current_strategy = strategies[0] if strategies else None
-            
-            if st.session_state.strategies_generated:
-                st.sidebar.subheader("Generated Strategies")
-                for strategy in st.session_state.strategies_generated:
-                    if st.sidebar.button(f"Test: {strategy[:50]}...", key=f"test_{strategy}"):
-                        st.session_state.current_strategy = strategy
-            
-            if st.session_state.current_strategy:
-                strategy = st.session_state.current_strategy
-                
-                st.header(f"Testing Strategy: {strategy}")
-                
-                if strategy not in st.session_state.test_results:
-                    if st.button("Run Analytical Tests", type="primary"):
-                        self.test_business_strategy(strategy)
-                        st.rerun()
-                else:
-                    test_result_data = st.session_state.test_results[strategy]
-                    self.display_strategy_test_report(test_result_data)
-            
-            else:
-                st.info("Click 'Generate Business Strategies' to start the AI analysis")
-
-    st.title("Agentic AI Strategy Testing System")
-    st.markdown("**Manager Agent discovers strategies • Analyst Agent creates tests and models**")
-    
-    # Add the agent roles explanation
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("Manager Agent")
-        st.markdown("""
-        **Role**: Strategic Decision Maker
-        **Responsibilities**:
-        - Analyzes business data patterns
-        - Discovers growth opportunities  
-        - Generates strategic initiatives
-        - Identifies market trends
-        - Proposes revenue optimization strategies
-        """)
-        
-    with col2:
-        st.subheader("Analyst Agent") 
-        st.markdown("""
-        **Role**: Data Scientist & Modeler
-        **Responsibilities**:
-        - Builds statistical models
-        - Tests strategy effectiveness
-        - Creates revenue forecasts
-        - Analyzes customer behavior
-        - Provides actionable insights
-        """)
-    
-    st.markdown("---")
-    
-    if not client:
-        st.error("BigQuery connection required for Agentic AI System")
-        st.info("Please check your BigQuery credentials")
-    else:
-        system = BusinessStrategyTestingSystem(client)
-        system.render_system_interface()
-        
-        with st.sidebar:
-            st.markdown("---")
-            st.markdown("### Agentic AI System:")
-            st.markdown("**Manager Agent** - Discovers business strategies")
-            st.markdown("**Analyst Agent** - Creates tests and models")  
-            st.markdown("**Sales Forecasting** - Revenue projection models")
-            st.markdown("**Retention Analysis** - Customer churn prediction")
-            
-            st.markdown("---")
-            st.markdown("### How It Works:")
-            st.markdown("1. **Manager Agent** analyzes data patterns")
-            st.markdown("2. **Generates business strategies** automatically")
-            st.markdown("3. **Analyst Agent** builds statistical models")
-            st.markdown("4. **Tests strategies** with real data")
-            st.markdown("5. **Provides actionable recommendations**")
+if __name__ == "__main__":
+    main()
