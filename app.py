@@ -287,7 +287,7 @@ class GeminiStrategyManager:
                 COUNT(*) as monthly_sales,
                 ROUND(AVG(sale_price), 0) as avg_price
             FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
-            WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 6 MONTH)
+            WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 DAY)
             GROUP BY year, month
             ORDER BY year DESC, month DESC
             """
