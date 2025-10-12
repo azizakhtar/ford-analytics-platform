@@ -1352,6 +1352,9 @@ elif st.session_state.page == 'AI Agent':
                     # Get required analyses
                     required_analyses = StrategyAgent.decide_analyses(strategy)
                     
+                    # Create real analysis engine
+                    engine = AnalysisEngine(client)
+                    
                     # Create test results
                     test_results = {
                         "strategy": strategy,
@@ -1360,50 +1363,24 @@ elif st.session_state.page == 'AI Agent':
                         "confidence_score": strategy.get('feasibility', 7) * 10
                     }
                     
-                    # Mock analysis results for each required analysis
+                    # Run REAL analyses with visualizations
                     for analysis_type in required_analyses:
                         if analysis_type == "churn_prediction":
-                            test_results["analysis_results"][analysis_type] = {
-                                "analysis_type": "CUSTOMER CHURN PREDICTION",
-                                "executive_summary": f"Churn analysis for '{strategy_name[:30]}...' identifies 15-20% of customers at high risk. Expected retention improvement: {strategy.get('impact', 'TBD')}",
-                                "key_metrics": {
-                                    "High Risk Customers": "320",
-                                    "Potential Revenue at Risk": "$2.4M",
-                                    "Retention Opportunity": "$1.4M"
-                                }
-                            }
+                            result = engine.analyze_churn_prediction(strategy)
                         elif analysis_type == "sales_forecasting":
-                            test_results["analysis_results"][analysis_type] = {
-                                "analysis_type": "SALES FORECASTING MODEL",
-                                "executive_summary": f"Sales forecasting projects significant growth. Expected impact: {strategy.get('impact', 'TBD')}",
-                                "key_metrics": {
-                                    "Projected 12-mo Growth": "18%",
-                                    "Revenue Impact": "$850K",
-                                    "Confidence Level": "High"
-                                }
-                            }
+                            result = engine.analyze_sales_forecasting(strategy)
+                        elif analysis_type == "pricing_elasticity":
+                            result = engine.analyze_pricing_elasticity(strategy)
+                        elif analysis_type == "segmentation_analysis":
+                            result = engine.analyze_customer_segmentation(strategy)
                         elif analysis_type == "customer_lifetime_value":
-                            test_results["analysis_results"][analysis_type] = {
-                                "analysis_type": "CUSTOMER LIFETIME VALUE ANALYSIS",
-                                "executive_summary": "High-value customer segments show strong potential.",
-                                "key_metrics": {
-                                    "Average CLV": "$45K",
-                                    "Top Segment CLV": "$120K",
-                                    "Value Opportunity": "$3.2M"
-                                }
-                            }
+                            result = engine.analyze_customer_lifetime_value(strategy)
                         elif analysis_type == "revenue_impact":
-                            test_results["analysis_results"][analysis_type] = {
-                                "analysis_type": "REVENUE IMPACT ANALYSIS",
-                                "executive_summary": f"Revenue modeling shows {strategy.get('impact', 'moderate')} with {strategy.get('feasibility', 7)}/10 feasibility.",
-                                "key_metrics": {
-                                    "Expected Revenue Impact": strategy.get('impact', 'TBD'),
-                                    "Implementation Cost": "Medium",
-                                    "ROI Timeline": "6-9 months"
-                                }
-                            }
+                            result = engine.analyze_revenue_impact(strategy)
+                        elif analysis_type == "geographic_analysis":
+                            result = engine.analyze_geographic_analysis(strategy)
                         else:
-                            test_results["analysis_results"][analysis_type] = {
+                            result = {
                                 "analysis_type": analysis_type.replace('_', ' ').upper(),
                                 "executive_summary": f"{analysis_type.replace('_', ' ').title()} analysis completed.",
                                 "key_metrics": {
@@ -1411,6 +1388,8 @@ elif st.session_state.page == 'AI Agent':
                                     "Data Quality": "Good"
                                 }
                             }
+                        
+                        test_results["analysis_results"][analysis_type] = result
                     
                     # Generate Gemini summary
                     summarizer = GeminiSummarizer(gemini_model)
