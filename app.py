@@ -17,7 +17,6 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 import scipy.stats as stats
 import google.generativeai as genai
-from datetime import datetime
 
 # Page config MUST be first
 st.set_page_config(page_title="DataSphere Analytics", layout="wide")
@@ -82,412 +81,6 @@ def get_bigquery_client():
     except Exception as e:
         st.error(f"BigQuery connection failed: {str(e)}")
         return None
-
-# ============================================================================
-# AGENT EVALUATION METRICS CLASS
-# ============================================================================
-
-class AgentEvaluationMetrics:
-    """Tracks and evaluates agent performance across multiple dimensions"""
-    
-    def __init__(self):
-        self.metrics_history = []
-    
-    def evaluate_strategy_quality(self, strategy, test_results):
-        """Evaluate the quality of a generated strategy"""
-        scores = {}
-        
-        description = strategy.get('description', '')
-        specificity = 0
-        
-        if any(char.isdigit() for char in description):
-            specificity += 30
-        
-        action_words = ['implement', 'launch', 'create', 'develop', 'optimize', 'target', 'identify']
-        if any(word in description.lower() for word in action_words):
-            specificity += 20
-        
-        segments = ['gold', 'silver', 'bronze', 'high-value', 'tier', 'segment']
-        if any(seg in description.lower() for seg in segments):
-            specificity += 25
-        
-        if any(word in description.lower() for word in ['month', 'quarter', 'year', 'days']):
-            specificity += 25
-        
-        scores['specificity_score'] = min(specificity, 100)
-        
-        data_driven = 0
-        if strategy.get('rationale') and len(strategy.get('rationale', '')) > 50:
-            data_driven += 40
-        
-        data_words = ['data', 'analysis', 'shows', 'indicates', 'customer', 'sales', 'revenue']
-        rationale = strategy.get('rationale', '').lower()
-        data_mentions = sum(1 for word in data_words if word in rationale)
-        data_driven += min(data_mentions * 10, 40)
-        
-        if strategy.get('impact') and '%' in strategy.get('impact', ''):
-            data_driven += 20
-        
-        scores['data_driven_score'] = min(data_driven, 100)
-        scores['feasibility_score'] = strategy.get('feasibility', 5) * 10
-        
-        impact = strategy.get('impact', '')
-        impact_clarity = 0
-        
-        if '%' in impact:
-            impact_clarity += 40
-        
-        if '-' in impact and '%' in impact:
-            impact_clarity += 30
-        
-        impact_metrics = ['revenue', 'churn', 'growth', 'retention', 'customers']
-        if any(metric in impact.lower() for metric in impact_metrics):
-            impact_clarity += 30
-        
-        scores['impact_clarity_score'] = min(impact_clarity, 100)
-        
-        overall = (
-            scores['specificity_score'] * 0.25 +
-            scores['data_driven_score'] * 0.30 +
-            scores['feasibility_score'] * 0.25 +
-            scores['impact_clarity_score'] * 0.20
-        )
-        
-        scores['overall_quality'] = overall
-        return scores
-    
-    def evaluate_analysis_quality(self, analysis_result):
-        """Evaluate quality of an analysis"""
-        scores = {}
-        
-        completeness = 0
-        required_fields = ['analysis_type', 'executive_summary', 'key_metrics']
-        
-        for field in required_fields:
-            if field in analysis_result and analysis_result[field]:
-                completeness += 33
-        
-        scores['completeness_score'] = min(completeness, 100)
-        
-        viz_score = 0
-        if 'visualizations' in analysis_result and analysis_result['visualizations']:
-            viz_score += 50
-            if len(analysis_result['visualizations']) > 1:
-                viz_score += 25
-            viz_score += 25
-        
-        scores['visualization_score'] = min(viz_score, 100)
-        
-        summary = analysis_result.get('executive_summary', '')
-        insight_depth = 0
-        
-        if len(summary) > 100:
-            insight_depth += 30
-        
-        if any(char.isdigit() for char in summary):
-            insight_depth += 25
-        
-        action_words = ['recommend', 'suggest', 'should', 'expect', 'impact', 'improve']
-        if any(word in summary.lower() for word in action_words):
-            insight_depth += 25
-        
-        comparison_words = ['compared', 'vs', 'higher', 'lower', 'increase', 'decrease']
-        if any(word in summary.lower() for word in comparison_words):
-            insight_depth += 20
-        
-        scores['insight_depth_score'] = min(insight_depth, 100)
-        
-        metrics = analysis_result.get('key_metrics', {})
-        metric_relevance = 0
-        
-        if metrics:
-            metric_relevance += 40
-        
-        if len(metrics) >= 3:
-            metric_relevance += 30
-        
-        quantified = sum(1 for v in metrics.values() if any(char.isdigit() for char in str(v)))
-        metric_relevance += min(quantified * 10, 30)
-        
-        scores['metric_relevance_score'] = min(metric_relevance, 100)
-        
-        overall = (
-            scores['completeness_score'] * 0.25 +
-            scores['visualization_score'] * 0.30 +
-            scores['insight_depth_score'] * 0.25 +
-            scores['metric_relevance_score'] * 0.20
-        )
-        
-        scores['overall_quality'] = overall
-        return scores
-    
-    def evaluate_agent_decision_quality(self, strategy, analyses_run):
-        """Evaluate if agent chose appropriate analyses"""
-        scores = {}
-        strategy_type = strategy.get('type', 'unknown')
-        
-        optimal_analyses = {
-            'churn_reduction': ['churn_prediction', 'customer_lifetime_value', 'sales_forecasting'],
-            'sales_forecasting': ['sales_forecasting', 'revenue_impact', 'geographic_analysis'],
-            'customer_segmentation': ['segmentation_analysis', 'customer_lifetime_value', 'pricing_elasticity'],
-            'pricing_elasticity': ['pricing_elasticity', 'revenue_impact', 'churn_prediction']
-        }
-        
-        optimal = set(optimal_analyses.get(strategy_type, []))
-        actual = set(analyses_run)
-        
-        if optimal:
-            relevant_count = len(optimal.intersection(actual))
-            relevance = (relevant_count / len(optimal)) * 100
-        else:
-            relevance = 50
-        
-        scores['relevance_score'] = relevance
-        
-        if optimal:
-            coverage = (len(optimal.intersection(actual)) / len(optimal)) * 100
-        else:
-            coverage = 50
-        
-        scores['coverage_score'] = coverage
-        
-        unnecessary = actual - optimal
-        efficiency = 100 - (len(unnecessary) * 20)
-        
-        scores['efficiency_score'] = max(efficiency, 0)
-        
-        overall = (
-            scores['relevance_score'] * 0.40 +
-            scores['coverage_score'] * 0.40 +
-            scores['efficiency_score'] * 0.20
-        )
-        
-        scores['overall_quality'] = overall
-        return scores
-    
-    def evaluate_gemini_summary_quality(self, summary, test_results):
-        """Evaluate quality of executive summary"""
-        scores = {}
-        
-        word_count = len(summary.split())
-        
-        if 50 <= word_count <= 150:
-            conciseness = 100
-        elif 30 <= word_count < 50 or 150 < word_count <= 200:
-            conciseness = 80
-        elif word_count < 30:
-            conciseness = 50
-        else:
-            conciseness = max(100 - (word_count - 200), 0)
-        
-        scores['conciseness_score'] = conciseness
-        
-        clarity = 0
-        recommendation_words = ['recommend', 'consider', 'do not recommend', 'proceed', 'caution']
-        if any(word in summary.lower() for word in recommendation_words):
-            clarity += 40
-        
-        if any(char.isdigit() for char in summary):
-            clarity += 30
-        
-        if '.' in summary:
-            clarity += 30
-        
-        scores['clarity_score'] = min(clarity, 100)
-        
-        evidence = 0
-        analysis_types = [result.get('analysis_type', '') for result in test_results.get('analysis_results', {}).values()]
-        analysis_mentions = sum(1 for atype in analysis_types if atype.lower() in summary.lower())
-        evidence += min(analysis_mentions * 25, 50)
-        
-        if any(char.isdigit() for char in summary):
-            evidence += 30
-        
-        if any(word in summary.lower() for word in ['risk', 'opportunity', 'impact', 'benefit']):
-            evidence += 20
-        
-        scores['evidence_based_score'] = min(evidence, 100)
-        
-        actionability = 0
-        action_phrases = ['next step', 'should', 'implement', 'test', 'launch', 'monitor', 'track']
-        if any(phrase in summary.lower() for phrase in action_phrases):
-            actionability += 50
-        
-        if any(word in summary.lower() for word in ['month', 'quarter', 'week', 'immediately']):
-            actionability += 25
-        
-        if any(word in summary.lower() for word in ['team', 'department', 'leadership', 'management']):
-            actionability += 25
-        
-        scores['actionability_score'] = min(actionability, 100)
-        
-        overall = (
-            scores['conciseness_score'] * 0.20 +
-            scores['clarity_score'] * 0.30 +
-            scores['evidence_based_score'] * 0.30 +
-            scores['actionability_score'] * 0.20
-        )
-        
-        scores['overall_quality'] = overall
-        return scores
-    
-    def calculate_overall_agent_performance(self, test_results):
-        """Calculate overall agent system performance score"""
-        strategy = test_results['strategy']
-        
-        strategy_scores = self.evaluate_strategy_quality(strategy, test_results)
-        
-        analysis_scores_list = []
-        for analysis_result in test_results['analysis_results'].values():
-            analysis_scores_list.append(self.evaluate_analysis_quality(analysis_result))
-        
-        avg_analysis_score = np.mean([s['overall_quality'] for s in analysis_scores_list]) if analysis_scores_list else 0
-        
-        decision_scores = self.evaluate_agent_decision_quality(strategy, test_results['analyses_run'])
-        
-        summary_scores = self.evaluate_gemini_summary_quality(
-            test_results.get('executive_summary', ''),
-            test_results
-        )
-        
-        overall_performance = (
-            strategy_scores['overall_quality'] * 0.25 +
-            avg_analysis_score * 0.35 +
-            decision_scores['overall_quality'] * 0.20 +
-            summary_scores['overall_quality'] * 0.20
-        )
-        
-        performance_report = {
-            'timestamp': datetime.now().isoformat(),
-            'strategy_name': strategy.get('name'),
-            'overall_performance': overall_performance,
-            'strategy_quality': strategy_scores,
-            'analysis_quality': {
-                'average_score': avg_analysis_score,
-                'individual_scores': analysis_scores_list
-            },
-            'decision_quality': decision_scores,
-            'summary_quality': summary_scores,
-            'grade': self._assign_grade(overall_performance)
-        }
-        
-        self.metrics_history.append(performance_report)
-        return performance_report
-    
-    def _assign_grade(self, score):
-        """Assign letter grade based on score"""
-        if score >= 90:
-            return 'A'
-        elif score >= 80:
-            return 'B'
-        elif score >= 70:
-            return 'C'
-        elif score >= 60:
-            return 'D'
-        else:
-            return 'F'
-    
-    def get_performance_trends(self):
-        """Get trends over time"""
-        if not self.metrics_history:
-            return None
-        
-        df = pd.DataFrame(self.metrics_history)
-        
-        trends = {
-            'average_performance': df['overall_performance'].mean(),
-            'performance_std': df['overall_performance'].std(),
-            'best_performance': df['overall_performance'].max(),
-            'worst_performance': df['overall_performance'].min(),
-            'total_strategies_tested': len(df),
-            'grade_distribution': df['grade'].value_counts().to_dict()
-        }
-        
-        return trends
-    
-    def visualize_performance(self):
-        """Create performance dashboard visualizations"""
-        if not self.metrics_history:
-            return None
-        
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
-        df = pd.DataFrame(self.metrics_history)
-        
-        ax1.plot(range(len(df)), df['overall_performance'], 'o-', linewidth=2, markersize=8, color='#1f77b4')
-        ax1.axhline(y=80, color='green', linestyle='--', label='Target (80)', linewidth=2)
-        ax1.axhline(y=df['overall_performance'].mean(), color='blue', linestyle='--', label='Average', linewidth=2)
-        ax1.set_xlabel('Strategy Test Number', fontsize=12)
-        ax1.set_ylabel('Performance Score', fontsize=12)
-        ax1.set_title('Agent Performance Over Time', fontsize=14, fontweight='bold')
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        ax1.set_ylim([0, 105])
-        
-        if len(df) > 0:
-            latest = df.iloc[-1]
-            components = {
-                'Strategy\nQuality': latest['strategy_quality']['overall_quality'],
-                'Analysis\nQuality': latest['analysis_quality']['average_score'],
-                'Decision\nQuality': latest['decision_quality']['overall_quality'],
-                'Summary\nQuality': latest['summary_quality']['overall_quality']
-            }
-            
-            bars = ax2.bar(components.keys(), components.values(), 
-                          color=['#ff7f0e', '#2ca02c', '#d62728', '#9467bd'], 
-                          alpha=0.7, edgecolor='black', linewidth=2)
-            ax2.axhline(y=80, color='green', linestyle='--', label='Target', linewidth=2)
-            ax2.set_ylabel('Score', fontsize=12)
-            ax2.set_title('Component Scores (Latest Test)', fontsize=14, fontweight='bold')
-            ax2.legend()
-            ax2.grid(True, alpha=0.3, axis='y')
-            ax2.set_ylim([0, 105])
-            
-            for bar in bars:
-                height = bar.get_height()
-                ax2.text(bar.get_x() + bar.get_width()/2., height + 2,
-                        f'{height:.1f}', ha='center', va='bottom', fontweight='bold', fontsize=10)
-        
-        grades = df['grade'].value_counts().reindex(['A', 'B', 'C', 'D', 'F'], fill_value=0)
-        colors_map = {'A': '#2ecc71', 'B': '#95d5b2', 'C': '#ffd93d', 'D': '#ff9100', 'F': '#e74c3c'}
-        grade_colors = [colors_map.get(g, 'gray') for g in grades.index]
-        
-        bars = ax3.bar(grades.index, grades.values, color=grade_colors, alpha=0.8, edgecolor='black', linewidth=2)
-        ax3.set_xlabel('Grade', fontsize=12)
-        ax3.set_ylabel('Count', fontsize=12)
-        ax3.set_title('Performance Grade Distribution', fontsize=14, fontweight='bold')
-        ax3.grid(True, alpha=0.3, axis='y')
-        
-        for bar in bars:
-            height = bar.get_height()
-            if height > 0:
-                ax3.text(bar.get_x() + bar.get_width()/2., height + 0.1,
-                        f'{int(height)}', ha='center', va='bottom', fontweight='bold', fontsize=10)
-        
-        if len(df) > 1:
-            perf_data = []
-            for _, row in df.iterrows():
-                perf_data.append([
-                    row['strategy_quality']['overall_quality'],
-                    row['analysis_quality']['average_score'],
-                    row['decision_quality']['overall_quality'],
-                    row['summary_quality']['overall_quality']
-                ])
-            
-            perf_array = np.array(perf_data).T
-            im = ax4.imshow(perf_array, cmap='RdYlGn', aspect='auto', vmin=0, vmax=100)
-            ax4.set_yticks([0, 1, 2, 3])
-            ax4.set_yticklabels(['Strategy', 'Analysis', 'Decision', 'Summary'], fontsize=11)
-            ax4.set_xlabel('Test Number', fontsize=12)
-            ax4.set_title('Performance Heatmap', fontsize=14, fontweight='bold')
-            cbar = plt.colorbar(im, ax=ax4, label='Score')
-            cbar.set_label('Score', fontsize=11)
-        
-        plt.tight_layout()
-        return fig
-
-# Initialize evaluator in session state
-if 'evaluator' not in st.session_state:
-    st.session_state.evaluator = AgentEvaluationMetrics()
 
 # ============================================================================
 # GEMINI SQL GENERATOR
@@ -1100,10 +693,6 @@ with st.sidebar:
     if st.button("Agentic AI System", use_container_width=True, type="primary" if st.session_state.page == 'AI Agent' else "secondary"):
         st.session_state.page = 'AI Agent'
         st.rerun()
-    
-    if st.button("Agent Evaluation", use_container_width=True, type="primary" if st.session_state.page == 'Agent Evaluation' else "secondary"):
-        st.session_state.page = 'Agent Evaluation'
-        st.rerun()
 
 # ============================================================================
 # DASHBOARD PAGE
@@ -1390,4 +979,111 @@ elif st.session_state.page == 'AI Agent':
                         test_results["analysis_results"][analysis_type] = result
                     
                     summarizer = GeminiSummarizer(gemini_model)
-                    summary = summarizer.summarize_analysis(
+                    summary = summarizer.summarize_analysis(strategy, test_results["analysis_results"])
+                    test_results["executive_summary"] = summary
+                    
+                    feasibility = strategy.get('feasibility', 5)
+                    if feasibility >= 8:
+                        test_results["recommendation"] = "STRONG RECOMMENDATION"
+                    elif feasibility >= 6:
+                        test_results["recommendation"] = "MODERATE RECOMMENDATION"
+                    else:
+                        test_results["recommendation"] = "REQUIRES REFINEMENT"
+                    
+                    st.session_state.test_results[strategy_name] = test_results
+            
+            progress_bar.progress(1.0)
+            status_text.text(f"Completed {len(selected_objs)} strategies!")
+            st.session_state.batch_testing = False
+            st.success(f"All strategies tested!")
+            
+            if st.button("View Results", type="primary", use_container_width=True):
+                st.rerun()
+    
+    if st.session_state.test_results and not st.session_state.get('batch_testing', False):
+        st.markdown("---")
+        st.header("Test Results")
+        
+        st.subheader("Overview")
+        cols = st.columns(len(st.session_state.test_results))
+        
+        for idx, (name, results) in enumerate(st.session_state.test_results.items()):
+            with cols[idx]:
+                strategy = results['strategy']
+                st.markdown(f"**{strategy.get('type', 'unknown').replace('_', ' ').title()}**")
+                st.metric("Confidence", f"{results['confidence_score']}%")
+                feasibility = strategy.get('feasibility', 0)
+                if feasibility >= 8:
+                    st.success("High")
+                elif feasibility >= 6:
+                    st.warning("Medium")
+                else:
+                    st.error("Low")
+        
+        st.markdown("---")
+        st.subheader("Detailed Analysis")
+        
+        for name, test_results in st.session_state.test_results.items():
+            strategy = test_results['strategy']
+            
+            with st.expander(f"{strategy.get('type', 'unknown').replace('_', ' ').title()}: {name}", expanded=True):
+                st.markdown("### Gemini Summary")
+                st.info(test_results.get("executive_summary", "Complete"))
+                
+                st.markdown(f"### {test_results['recommendation']}")
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Confidence", f"{test_results['confidence_score']}%")
+                with col2:
+                    st.metric("Feasibility", f"{strategy.get('feasibility', 0)}/10")
+                with col3:
+                    st.metric("Analyses", len(test_results['analyses_run']))
+                
+                st.markdown("#### Analysis Details")
+                for analysis_type, result in test_results["analysis_results"].items():
+                    with st.expander(f"{result['analysis_type']}", expanded=False):
+                        st.write(result['executive_summary'])
+                        
+                        if result.get('key_metrics'):
+                            metric_cols = st.columns(len(result['key_metrics']))
+                            for idx, (metric, value) in enumerate(result['key_metrics'].items()):
+                                metric_cols[idx].metric(metric, value)
+                        
+                        if result.get('visualizations'):
+                            for viz in result['visualizations']:
+                                st.pyplot(viz)
+        
+        st.markdown("---")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("Clear Results", use_container_width=True):
+                st.session_state.test_results = {}
+                st.rerun()
+        with col2:
+            if st.button("Test More", use_container_width=True):
+                st.session_state.selected_strategies = []
+                st.rerun()
+        with col3:
+            if st.button("New Strategies", use_container_width=True):
+                st.session_state.strategies_generated = []
+                st.session_state.selected_strategies = []
+                st.session_state.test_results = {}
+                st.rerun()
+    
+    elif not st.session_state.strategies_generated:
+        st.info("Click 'Generate Strategies' to start")
+        
+        st.markdown("---")
+        st.subheader("How It Works")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("### 1. Generate")
+            st.write("Gemini analyzes BigQuery data")
+        with col2:
+            st.markdown("### 2. Agent Decides")
+            st.write("Selects relevant analyses")
+        with col3:
+            st.markdown("### 3. Execute")
+            st.write("Runs tests with visualizations")
