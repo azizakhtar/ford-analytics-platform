@@ -27,32 +27,29 @@ st.set_page_config(
 # ============================================================================
 
 def check_password():
-    """Returns `True` if the user had the correct password."""
+    """Returns True if the user had the correct password."""
     
     def password_entered():
         """Checks whether a password entered by the user is correct."""
-        if st.session_state["password"] == "datasphere2024":  # Change this password
+        if st.session_state["password"] == "datasphere2024":
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store password
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # First run, show input for password
         st.text_input(
             "Password", type="password", on_change=password_entered, key="password"
         )
-        st.write("*Please enter your password to access DataSphere Analytics*")
+        st.write("Please enter your password to access DataSphere Analytics")
         return False
     elif not st.session_state["password_correct"]:
-        # Password incorrect, show input + error
         st.text_input(
             "Password", type="password", on_change=password_entered, key="password"
         )
-        st.error("😕 Password incorrect")
+        st.error("Password incorrect")
         return False
     else:
-        # Password correct
         return True
 
 # ============================================================================
@@ -543,294 +540,20 @@ def initialize_session_state():
         st.session_state.current_page = "Home"
 
 # ============================================================================
-# PAGE FUNCTIONS
+# PAGE RENDERING FUNCTIONS
 # ============================================================================
 
 def render_home_page():
     """Render home/dashboard page"""
-    st.title("🏠 DataSphere Analytics")
+    st.title("DataSphere Analytics")
     st.markdown("### AI-Powered Business Intelligence Platform")
     
     st.markdown("---")
     
-    overall = scores['overall_quality']
-    
-    if overall >= 85:
-        st.success("**Excellent Summary**: Concise, clear, evidence-based, and actionable.")
-    elif overall >= 70:
-        st.success("**Good Summary**: Meets most criteria effectively.")
-    elif overall >= 55:
-        st.warning("**Fair Summary**: Could be more concise, clear, or actionable.")
-    else:
-        st.error("**Weak Summary**: Lacks clarity, evidence, or actionable recommendations.")
-
-
-def render_benchmark_testing():
-    """Run benchmark tests on predefined strategies"""
-    st.header("Benchmark Testing")
-    
-    st.markdown("""
-    Run standardized tests against benchmark strategies to evaluate agent performance.
-    These tests use predefined strategies with known expected outcomes.
-    """)
-    
-    # Display benchmark strategies
-    st.subheader("Available Benchmark Strategies")
-    
-    for idx, strategy in enumerate(BENCHMARK_STRATEGIES):
-        with st.expander(f"{strategy['name']}", expanded=(idx == 0)):
-            col1, col2 = st.columns([2, 1])
-            
-            with col1:
-                st.markdown(f"**Type:** {strategy['type']}")
-                st.markdown(f"**Description:** {strategy['description']}")
-                st.markdown(f"**Rationale:** {strategy['rationale']}")
-                st.markdown(f"**Expected Impact:** {strategy['impact']}")
-            
-            with col2:
-                st.metric("Feasibility", f"{strategy['feasibility']}/10")
-                st.markdown("**Expected Analyses:**")
-                for analysis in strategy['expected_analyses']:
-                    st.markdown(f"- {analysis}")
-    
-    st.markdown("---")
-    
-    # Test controls
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        selected_strategy = st.selectbox(
-            "Select Strategy to Test",
-            [s['name'] for s in BENCHMARK_STRATEGIES]
-        )
-    
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        run_test = st.button("Run Benchmark Test", type="primary", use_container_width=True)
-    
-    if run_test:
-        st.info("**Note**: This is a demonstration. In the actual app, this would trigger the full agent workflow and evaluate results.")
-        
-        # Find selected strategy
-        strategy = next(s for s in BENCHMARK_STRATEGIES if s['name'] == selected_strategy)
-        
-        with st.spinner("Running benchmark test..."):
-            # Simulate test results
-            test_results = simulate_benchmark_test(strategy)
-            
-            # Store results
-            st.session_state.test_results[strategy['name']] = test_results
-            
-            # Calculate performance
-            performance_report = st.session_state.evaluator.calculate_overall_agent_performance(test_results)
-            
-            st.success("Benchmark test completed!")
-            
-            # Display results
-            st.markdown("---")
-            st.header("Test Results")
-            
-            # Overall score
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                score = performance_report['overall_performance']
-                grade = performance_report['grade']
-                st.metric("Overall Performance", f"{score:.1f}/100", f"Grade: {grade}")
-            
-            with col2:
-                st.metric("Strategy Quality", f"{performance_report['strategy_quality']['overall_quality']:.1f}/100")
-            
-            with col3:
-                st.metric("Analysis Quality", f"{performance_report['analysis_quality']['average_score']:.1f}/100")
-            
-            # Detailed results
-            with st.expander("Detailed Results", expanded=True):
-                tab1, tab2, tab3, tab4 = st.tabs(["Strategy", "Analysis", "Decision", "Summary"])
-                
-                with tab1:
-                    render_strategy_quality_tab(performance_report['strategy_quality'])
-                
-                with tab2:
-                    render_analysis_quality_tab(performance_report['analysis_quality'])
-                
-                with tab3:
-                    render_decision_quality_tab(performance_report['decision_quality'])
-                
-                with tab4:
-                    render_summary_quality_tab(performance_report['summary_quality'])
-
-
-def simulate_benchmark_test(strategy):
-    """
-    Simulate benchmark test results
-    In real app, this would call the actual agent system
-    """
-    
-    # Create mock test results based on strategy
-    test_results = {
-        'strategy': strategy,
-        'analyses_run': strategy['expected_analyses'],
-        'analysis_results': {},
-        'executive_summary': f"Based on comprehensive analysis, I recommend proceeding with {strategy['name']}. "
-                           f"Our analysis shows {strategy['impact']}. Implementation should begin within 30 days "
-                           f"with close monitoring of key metrics. Risk level is moderate with high upside potential.",
-        'timestamp': datetime.now().isoformat()
-    }
-    
-    # Generate mock analysis results
-    for analysis_type in strategy['expected_analyses']:
-        test_results['analysis_results'][analysis_type] = {
-            'analysis_type': analysis_type,
-            'executive_summary': f"Analysis of {analysis_type} shows significant opportunity. "
-                               f"Key metrics indicate positive trends with 85% confidence level. "
-                               f"Recommend immediate action to capitalize on findings.",
-            'key_metrics': {
-                'Primary Metric': '18.5%',
-                'Secondary Metric': '$2.4M',
-                'Confidence Level': '85%'
-            },
-            'visualizations': ['chart1.png', 'chart2.png'],
-            'recommendations': ['Implement strategy', 'Monitor metrics', 'Adjust as needed']
-        }
-    
-    return test_results
-
-
-def render_historical_comparison():
-    """Compare performance across historical runs"""
-    st.header("Historical Performance Comparison")
-    
-    if not st.session_state.evaluator.metrics_history:
-        st.warning("No historical data available. Run benchmark tests to build history.")
-        return
-    
-    # Performance trends
-    trends = st.session_state.evaluator.get_performance_trends()
-    
-    st.subheader("Performance Summary")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    col1.metric("Average Performance", f"{trends['average_performance']:.1f}/100")
-    col2.metric("Best Performance", f"{trends['best_performance']:.1f}/100")
-    col3.metric("Worst Performance", f"{trends['worst_performance']:.1f}/100")
-    col4.metric("Total Tests", trends['total_strategies_tested'])
-    
-    st.markdown("---")
-    
-    # Grade distribution
-    st.subheader("Grade Distribution")
-    
-    grade_dist = trends['grade_distribution']
-    
-    cols = st.columns(5)
-    for idx, grade in enumerate(['A', 'B', 'C', 'D', 'F']):
-        count = grade_dist.get(grade, 0)
-        cols[idx].metric(f"Grade {grade}", count)
-    
-    st.markdown("---")
-    
-    # Visualizations
-    st.subheader("Performance Trends")
-    
-    fig = st.session_state.evaluator.visualize_performance()
-    if fig:
-        st.pyplot(fig)
-    
-    st.markdown("---")
-    
-    # Detailed history table
-    st.subheader("Test History")
-    
-    history_df = pd.DataFrame([
-        {
-            'Timestamp': h['timestamp'],
-            'Strategy': h['strategy_name'],
-            'Overall Score': f"{h['overall_performance']:.1f}",
-            'Grade': h['grade'],
-            'Strategy Quality': f"{h['strategy_quality']['overall_quality']:.1f}",
-            'Analysis Quality': f"{h['analysis_quality']['average_score']:.1f}",
-            'Decision Quality': f"{h['decision_quality']['overall_quality']:.1f}",
-            'Summary Quality': f"{h['summary_quality']['overall_quality']:.1f}"
-        }
-        for h in st.session_state.evaluator.metrics_history
-    ])
-    
-    st.dataframe(history_df, use_container_width=True)
-    
-    # Export option
-    st.markdown("---")
-    
-    col1, col2 = st.columns([3, 1])
-    
-    with col2:
-        if st.button("Export History", use_container_width=True):
-            csv = history_df.to_csv(index=False)
-            st.download_button(
-                label="Download CSV",
-                data=csv,
-                file_name=f"agent_evaluation_history_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-
-
-# ============================================================================
-# MAIN APP
-# ============================================================================
-
-def main():
-    """Main application entry point"""
-    
-    # Check password first
-    if not check_password():
-        return
-    
-    # Initialize session state
-    initialize_session_state()
-    
-    # Sidebar navigation
-    with st.sidebar:
-        st.title("DataSphere Analytics")
-        st.markdown("---")
-        
-        page = st.radio(
-            "Navigation",
-            ["Home", "Strategy Generator", "Analytics Dashboard", "Agent Evaluation"],
-            key="navigation"
-        )
-        
-        st.markdown("---")
-        
-        st.markdown("### About")
-        st.markdown("""
-        DataSphere Analytics is an AI-powered business intelligence platform 
-        that combines advanced analytics with intelligent agents to deliver 
-        actionable insights.
-        """)
-        
-        st.markdown("---")
-        st.caption("Version 1.0.0")
-    
-    # Render selected page
-    if page == "Home":
-        render_home_page()
-    elif page == "Strategy Generator":
-        render_strategy_page()
-    elif page == "Analytics Dashboard":
-        render_analytics_page()
-    elif page == "Agent Evaluation":
-        render_evaluation_page()
-
-
-if __name__ == "__main__":
-    main()")
-    
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("### 📊 Analytics")
+        st.markdown("### Analytics")
         st.markdown("""
         - Customer Segmentation
         - Sales Forecasting
@@ -839,7 +562,7 @@ if __name__ == "__main__":
         """)
     
     with col2:
-        st.markdown("### 🤖 AI Agents")
+        st.markdown("### AI Agents")
         st.markdown("""
         - Strategy Generator
         - Data Analyst
@@ -848,7 +571,7 @@ if __name__ == "__main__":
         """)
     
     with col3:
-        st.markdown("### 📈 Insights")
+        st.markdown("### Insights")
         st.markdown("""
         - Real-time Dashboards
         - Predictive Models
@@ -858,12 +581,12 @@ if __name__ == "__main__":
     
     st.markdown("---")
     
-    st.info("👈 **Select a page from the sidebar to get started!**")
+    st.info("Select a page from the sidebar to get started")
 
 
 def render_strategy_page():
     """Render strategy generation page"""
-    st.title("💡 Strategy Generator")
+    st.title("Strategy Generator")
     st.markdown("Generate data-driven business strategies")
     
     st.markdown("---")
@@ -878,11 +601,11 @@ def render_strategy_page():
     
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
-        generate_btn = st.button("🚀 Generate Strategy", type="primary", use_container_width=True)
+        generate_btn = st.button("Generate Strategy", type="primary", use_container_width=True)
     
     if generate_btn:
         with st.spinner("Generating strategy..."):
-            st.success("✅ Strategy generated successfully!")
+            st.success("Strategy generated successfully")
             
             st.markdown("### Generated Strategy")
             st.markdown("**Strategy Name:** High-Value Customer Retention Program")
@@ -893,12 +616,11 @@ def render_strategy_page():
 
 def render_analytics_page():
     """Render analytics page"""
-    st.title("📊 Analytics Dashboard")
+    st.title("Analytics Dashboard")
     st.markdown("Comprehensive data analysis and insights")
     
     st.markdown("---")
     
-    # Sample metrics
     col1, col2, col3, col4 = st.columns(4)
     
     col1.metric("Total Revenue", "$2.4M", "+12%")
@@ -908,7 +630,6 @@ def render_analytics_page():
     
     st.markdown("---")
     
-    # Sample chart
     chart_data = pd.DataFrame(
         np.random.randn(20, 3),
         columns=['Revenue', 'Customers', 'Orders']
@@ -919,12 +640,11 @@ def render_analytics_page():
 
 def render_evaluation_page():
     """Render agent evaluation dashboard page"""
-    st.title("📊 Agent Evaluation Dashboard")
-    st.markdown("**Comprehensive testing and benchmarking system for AI agent performance**")
+    st.title("Agent Evaluation Dashboard")
+    st.markdown("Comprehensive testing and benchmarking system for AI agent performance")
     
     st.markdown("---")
     
-    # Evaluation mode selection
     col1, col2 = st.columns([3, 1])
     
     with col1:
@@ -949,9 +669,9 @@ def render_current_performance():
     st.header("Current Agent Performance")
     
     if not st.session_state.evaluator.metrics_history:
-        st.warning("⚠️ No evaluation data available yet. Run benchmark tests to generate performance metrics.")
+        st.warning("No evaluation data available yet. Run benchmark tests to generate performance metrics.")
         
-        with st.expander("📚 What Gets Evaluated?"):
+        with st.expander("What Gets Evaluated?"):
             col1, col2 = st.columns(2)
             
             with col1:
@@ -984,24 +704,14 @@ def render_current_performance():
                 """)
         return
     
-    # Get latest performance report
     latest = st.session_state.evaluator.metrics_history[-1]
     
-    # Overall metrics
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         score = latest['overall_performance']
         grade = latest['grade']
-        
-        if grade == 'A':
-            color = '🟢'
-        elif grade == 'B':
-            color = '🟡'
-        else:
-            color = '🔴'
-        
-        st.metric("Overall Performance", f"{score:.1f}/100", f"{color} Grade: {grade}")
+        st.metric("Overall Performance", f"{score:.1f}/100", f"Grade: {grade}")
     
     with col2:
         st.metric("Strategy Quality", f"{latest['strategy_quality']['overall_quality']:.1f}/100")
@@ -1014,12 +724,11 @@ def render_current_performance():
     
     st.markdown("---")
     
-    # Detailed breakdown tabs
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📝 Strategy Quality", 
-        "📊 Analysis Quality", 
-        "🎯 Decision Quality", 
-        "📄 Summary Quality"
+        "Strategy Quality", 
+        "Analysis Quality", 
+        "Decision Quality", 
+        "Summary Quality"
     ])
     
     with tab1:
@@ -1034,10 +743,9 @@ def render_current_performance():
     with tab4:
         render_summary_quality_tab(latest['summary_quality'])
     
-    # Performance trends
     if len(st.session_state.evaluator.metrics_history) > 1:
         st.markdown("---")
-        st.header("📈 Performance Trends")
+        st.header("Performance Trends")
         
         trends = st.session_state.evaluator.get_performance_trends()
         
@@ -1076,15 +784,15 @@ def render_strategy_quality_tab(scores):
     overall = scores['overall_quality']
     
     if overall >= 90:
-        st.success("🌟 **Excellent**: Strategy is highly specific, data-driven, feasible, and has clear impact.")
+        st.success("Excellent: Strategy is highly specific, data-driven, feasible, and has clear impact.")
     elif overall >= 80:
-        st.success("✅ **Very Good**: Strategy meets most quality criteria with minor improvements needed.")
+        st.success("Very Good: Strategy meets most quality criteria with minor improvements needed.")
     elif overall >= 70:
-        st.warning("⚠️ **Good**: Strategy is acceptable but could benefit from more specificity or data backing.")
+        st.warning("Good: Strategy is acceptable but could benefit from more specificity or data backing.")
     elif overall >= 60:
-        st.warning("⚠️ **Fair**: Strategy needs significant improvements in clarity, feasibility, or impact quantification.")
+        st.warning("Fair: Strategy needs significant improvements in clarity, feasibility, or impact quantification.")
     else:
-        st.error("❌ **Needs Improvement**: Strategy is too vague, lacks data support, or has unclear impact.")
+        st.error("Needs Improvement: Strategy is too vague, lacks data support, or has unclear impact.")
 
 
 def render_analysis_quality_tab(quality):
@@ -1095,7 +803,6 @@ def render_analysis_quality_tab(quality):
     
     st.markdown("---")
     
-    # Individual analysis scores
     for idx, analysis_score in enumerate(quality['individual_scores']):
         with st.expander(f"Analysis {idx + 1} - Score: {analysis_score['overall_quality']:.1f}/100"):
             cols = st.columns(4)
@@ -1108,10 +815,10 @@ def render_analysis_quality_tab(quality):
     st.markdown("---")
     st.info("""
     **What This Measures:**
-    - **Completeness**: Has all required components (summary, metrics, visualizations)
-    - **Visualizations**: Quality and informativeness of charts
-    - **Insight Depth**: Quality and actionability of findings
-    - **Metric Relevance**: Are metrics meaningful and quantified?
+    - Completeness: Has all required components
+    - Visualizations: Quality and informativeness of charts
+    - Insight Depth: Quality and actionability of findings
+    - Metric Relevance: Are metrics meaningful and quantified
     """)
 
 
@@ -1133,11 +840,11 @@ def render_decision_quality_tab(scores):
     st.markdown("---")
     
     if scores['overall_quality'] >= 80:
-        st.success("✅ Agent made excellent decisions about which analyses to run.")
+        st.success("Agent made excellent decisions about which analyses to run.")
     elif scores['overall_quality'] >= 60:
-        st.warning("⚠️ Agent's analysis selection could be improved.")
+        st.warning("Agent's analysis selection could be improved.")
     else:
-        st.error("❌ Agent ran inappropriate or missing key analyses.")
+        st.error("Agent ran inappropriate or missing key analyses.")
 
 
 def render_summary_quality_tab(scores):
@@ -1158,4 +865,245 @@ def render_summary_quality_tab(scores):
             st.metric(label, f"{score:.0f}/100")
             st.caption(description)
     
-    st.markdown("
+    st.markdown("---")
+    
+    overall = scores['overall_quality']
+    
+    if overall >= 85:
+        st.success("Excellent Summary: Concise, clear, evidence-based, and actionable.")
+    elif overall >= 70:
+        st.success("Good Summary: Meets most criteria effectively.")
+    elif overall >= 55:
+        st.warning("Fair Summary: Could be more concise, clear, or actionable.")
+    else:
+        st.error("Weak Summary: Lacks clarity, evidence, or actionable recommendations.")
+
+
+def render_benchmark_testing():
+    """Run benchmark tests on predefined strategies"""
+    st.header("Benchmark Testing")
+    
+    st.markdown("""
+    Run standardized tests against benchmark strategies to evaluate agent performance.
+    These tests use predefined strategies with known expected outcomes.
+    """)
+    
+    st.subheader("Available Benchmark Strategies")
+    
+    for idx, strategy in enumerate(BENCHMARK_STRATEGIES):
+        with st.expander(f"{strategy['name']}", expanded=(idx == 0)):
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.markdown(f"**Type:** {strategy['type']}")
+                st.markdown(f"**Description:** {strategy['description']}")
+                st.markdown(f"**Rationale:** {strategy['rationale']}")
+                st.markdown(f"**Expected Impact:** {strategy['impact']}")
+            
+            with col2:
+                st.metric("Feasibility", f"{strategy['feasibility']}/10")
+                st.markdown("**Expected Analyses:**")
+                for analysis in strategy['expected_analyses']:
+                    st.markdown(f"- {analysis}")
+    
+    st.markdown("---")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        selected_strategy = st.selectbox(
+            "Select Strategy to Test",
+            [s['name'] for s in BENCHMARK_STRATEGIES]
+        )
+    
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        run_test = st.button("Run Benchmark Test", type="primary", use_container_width=True)
+    
+    if run_test:
+        st.info("Note: This is a demonstration. In the actual app, this would trigger the full agent workflow.")
+        
+        strategy = next(s for s in BENCHMARK_STRATEGIES if s['name'] == selected_strategy)
+        
+        with st.spinner("Running benchmark test..."):
+            test_results = simulate_benchmark_test(strategy)
+            st.session_state.test_results[strategy['name']] = test_results
+            performance_report = st.session_state.evaluator.calculate_overall_agent_performance(test_results)
+            
+            st.success("Benchmark test completed")
+            
+            st.markdown("---")
+            st.header("Test Results")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                score = performance_report['overall_performance']
+                grade = performance_report['grade']
+                st.metric("Overall Performance", f"{score:.1f}/100", f"Grade: {grade}")
+            
+            with col2:
+                st.metric("Strategy Quality", f"{performance_report['strategy_quality']['overall_quality']:.1f}/100")
+            
+            with col3:
+                st.metric("Analysis Quality", f"{performance_report['analysis_quality']['average_score']:.1f}/100")
+            
+            with st.expander("Detailed Results", expanded=True):
+                tab1, tab2, tab3, tab4 = st.tabs(["Strategy", "Analysis", "Decision", "Summary"])
+                
+                with tab1:
+                    render_strategy_quality_tab(performance_report['strategy_quality'])
+                
+                with tab2:
+                    render_analysis_quality_tab(performance_report['analysis_quality'])
+                
+                with tab3:
+                    render_decision_quality_tab(performance_report['decision_quality'])
+                
+                with tab4:
+                    render_summary_quality_tab(performance_report['summary_quality'])
+
+
+def simulate_benchmark_test(strategy):
+    """Simulate benchmark test results"""
+    
+    test_results = {
+        'strategy': strategy,
+        'analyses_run': strategy['expected_analyses'],
+        'analysis_results': {},
+        'executive_summary': f"Based on comprehensive analysis, I recommend proceeding with {strategy['name']}. Our analysis shows {strategy['impact']}. Implementation should begin within 30 days with close monitoring of key metrics. Risk level is moderate with high upside potential.",
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    for analysis_type in strategy['expected_analyses']:
+        test_results['analysis_results'][analysis_type] = {
+            'analysis_type': analysis_type,
+            'executive_summary': f"Analysis of {analysis_type} shows significant opportunity. Key metrics indicate positive trends with 85% confidence level. Recommend immediate action to capitalize on findings.",
+            'key_metrics': {
+                'Primary Metric': '18.5%',
+                'Secondary Metric': '$2.4M',
+                'Confidence Level': '85%'
+            },
+            'visualizations': ['chart1.png', 'chart2.png'],
+            'recommendations': ['Implement strategy', 'Monitor metrics', 'Adjust as needed']
+        }
+    
+    return test_results
+
+
+def render_historical_comparison():
+    """Compare performance across historical runs"""
+    st.header("Historical Performance Comparison")
+    
+    if not st.session_state.evaluator.metrics_history:
+        st.warning("No historical data available. Run benchmark tests to build history.")
+        return
+    
+    trends = st.session_state.evaluator.get_performance_trends()
+    
+    st.subheader("Performance Summary")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    col1.metric("Average Performance", f"{trends['average_performance']:.1f}/100")
+    col2.metric("Best Performance", f"{trends['best_performance']:.1f}/100")
+    col3.metric("Worst Performance", f"{trends['worst_performance']:.1f}/100")
+    col4.metric("Total Tests", trends['total_strategies_tested'])
+    
+    st.markdown("---")
+    
+    st.subheader("Grade Distribution")
+    
+    grade_dist = trends['grade_distribution']
+    
+    cols = st.columns(5)
+    for idx, grade in enumerate(['A', 'B', 'C', 'D', 'F']):
+        count = grade_dist.get(grade, 0)
+        cols[idx].metric(f"Grade {grade}", count)
+    
+    st.markdown("---")
+    
+    st.subheader("Performance Trends")
+    
+    fig = st.session_state.evaluator.visualize_performance()
+    if fig:
+        st.pyplot(fig)
+    
+    st.markdown("---")
+    
+    st.subheader("Test History")
+    
+    history_df = pd.DataFrame([
+        {
+            'Timestamp': h['timestamp'],
+            'Strategy': h['strategy_name'],
+            'Overall Score': f"{h['overall_performance']:.1f}",
+            'Grade': h['grade'],
+            'Strategy Quality': f"{h['strategy_quality']['overall_quality']:.1f}",
+            'Analysis Quality': f"{h['analysis_quality']['average_score']:.1f}",
+            'Decision Quality': f"{h['decision_quality']['overall_quality']:.1f}",
+            'Summary Quality': f"{h['summary_quality']['overall_quality']:.1f}"
+        }
+        for h in st.session_state.evaluator.metrics_history
+    ])
+    
+    st.dataframe(history_df, use_container_width=True)
+    
+    st.markdown("---")
+    
+    col1, col2 = st.columns([3, 1])
+    
+    with col2:
+        if st.button("Export History", use_container_width=True):
+            csv = history_df.to_csv(index=False)
+            st.download_button(
+                label="Download CSV",
+                data=csv,
+                file_name=f"agent_evaluation_history_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+
+
+# ============================================================================
+# MAIN APP
+# ============================================================================
+
+def main():
+    """Main application entry point"""
+    
+    if not check_password():
+        return
+    
+    initialize_session_state()
+    
+    with st.sidebar:
+        st.title("DataSphere Analytics")
+        st.markdown("---")
+        
+        page = st.radio(
+            "Navigation",
+            ["Home", "Strategy Generator", "Analytics Dashboard", "Agent Evaluation"],
+            key="navigation"
+        )
+        
+        st.markdown("---")
+        
+        st.markdown("### About")
+        st.markdown("DataSphere Analytics is an AI-powered business intelligence platform that combines advanced analytics with intelligent agents.")
+        
+        st.markdown("---")
+        st.caption("Version 1.0.0")
+    
+    if page == "Home":
+        render_home_page()
+    elif page == "Strategy Generator":
+        render_strategy_page()
+    elif page == "Analytics Dashboard":
+        render_analytics_page()
+    elif page == "Agent Evaluation":
+        render_evaluation_page()
+
+
+if __name__ == "__main__":
+    main()
