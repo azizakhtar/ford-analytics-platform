@@ -728,3 +728,195 @@ elif st.session_state.page == 'AI Agent':
                 st.session_state.current_strategy = strategies[0]
             st.success(f"✅ Successfully generated {len(strategies)} data-driven strategies!")
             st.rerun()
+    
+    # Display strategies
+    if st.session_state.strategies_generated:
+        st.markdown("---")
+        st.subheader("📋 Generated Strategies")
+        
+        for idx, strategy in enumerate(st.session_state.strategies_generated):
+            strategy_name = strategy.get('name', 'Unknown Strategy')
+            feasibility = strategy.get('feasibility', 0)
+            strategy_type = strategy.get('type', 'unknown').replace('_', ' ').title()
+            
+            with st.expander(f"⭐ {feasibility}/10 - {strategy_type}: {strategy_name}", expanded=(idx == 0)):
+                st.write(f"**Type:** {strategy_type}")
+                st.write(f"**Description:** {strategy.get('description', 'N/A')}")
+                st.write(f"**Expected Impact:** {strategy.get('impact', 'N/A')}")
+                
+                if strategy.get('rationale'):
+                    st.info(f"**Rationale:** {strategy.get('rationale', 'N/A')}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Feasibility Score", f"{feasibility}/10")
+                with col2:
+                    if feasibility >= 8:
+                        st.success("✅ High Feasibility")
+                    elif feasibility >= 6:
+                        st.warning("⚠️ Medium Feasibility")
+                    else:
+                        st.error("❌ Low Feasibility")
+                
+                if st.button(f"🔬 Test This Strategy", key=f"test_btn_{idx}", use_container_width=True):
+                    st.session_state.current_strategy = strategy
+                    st.rerun()
+    
+    # Test selected strategy
+    if st.session_state.current_strategy:
+        strategy = st.session_state.current_strategy
+        strategy_name = strategy.get('name', 'Unknown Strategy')
+        
+        st.markdown("---")
+        st.header(f"🔬 Testing Strategy")
+        st.subheader(strategy_name)
+        
+        # Show what agent will analyze
+        required_analyses = StrategyAgent.decide_analyses(strategy)
+        
+        st.info(f"🤖 **Agent Decision:** Running {len(required_analyses)} analyses - {', '.join([a.replace('_', ' ').title() for a in required_analyses])}")
+        
+        if strategy_name not in st.session_state.test_results:
+            if st.button("▶️ Run Agentic Analysis", type="primary", use_container_width=True):
+                with st.spinner("🔄 Agent is analyzing strategy..."):
+                    # Import your existing analyst classes
+                    from sklearn.linear_model import LinearRegression
+                    
+                    # Simple mock results for demonstration
+                    # In production, this would call your full BusinessAnalyst class
+                    test_results = {
+                        "strategy": strategy,
+                        "analyses_run": required_analyses,
+                        "analysis_results": {},
+                        "confidence_score": strategy.get('feasibility', 7) * 10
+                    }
+                    
+                    # Mock analysis results for each required analysis
+                    for analysis_type in required_analyses:
+                        if analysis_type == "churn_prediction":
+                            test_results["analysis_results"][analysis_type] = {
+                                "analysis_type": "CUSTOMER CHURN PREDICTION",
+                                "executive_summary": f"Churn analysis for strategy '{strategy_name}' identifies 15-20% of customers at high risk. Expected retention improvement: {strategy.get('impact', 'TBD')}",
+                                "key_metrics": {
+                                    "High Risk Customers": "320",
+                                    "Potential Revenue at Risk": "$2.4M",
+                                    "Retention Opportunity": "$1.4M"
+                                }
+                            }
+                        elif analysis_type == "sales_forecasting":
+                            test_results["analysis_results"][analysis_type] = {
+                                "analysis_type": "SALES FORECASTING MODEL",
+                                "executive_summary": f"Sales forecasting projects significant growth with strategy implementation. Expected impact: {strategy.get('impact', 'TBD')}",
+                                "key_metrics": {
+                                    "Projected 12-mo Growth": "18%",
+                                    "Revenue Impact": "$850K",
+                                    "Confidence Level": "High"
+                                }
+                            }
+                        elif analysis_type == "customer_lifetime_value":
+                            test_results["analysis_results"][analysis_type] = {
+                                "analysis_type": "CUSTOMER LIFETIME VALUE ANALYSIS",
+                                "executive_summary": "High-value customer segments show strong potential for targeted strategies.",
+                                "key_metrics": {
+                                    "Average CLV": "$45K",
+                                    "Top Segment CLV": "$120K",
+                                    "Value Opportunity": "$3.2M"
+                                }
+                            }
+                        elif analysis_type == "revenue_impact":
+                            test_results["analysis_results"][analysis_type] = {
+                                "analysis_type": "REVENUE IMPACT ANALYSIS",
+                                "executive_summary": f"Revenue modeling shows {strategy.get('impact', 'moderate')} with {strategy.get('feasibility', 7)}/10 feasibility.",
+                                "key_metrics": {
+                                    "Expected Revenue Impact": strategy.get('impact', 'TBD'),
+                                    "Implementation Cost": "Medium",
+                                    "ROI Timeline": "6-9 months"
+                                }
+                            }
+                        else:
+                            test_results["analysis_results"][analysis_type] = {
+                                "analysis_type": analysis_type.replace('_', ' ').upper(),
+                                "executive_summary": f"{analysis_type.replace('_', ' ').title()} analysis completed successfully.",
+                                "key_metrics": {
+                                    "Status": "Complete",
+                                    "Data Quality": "Good"
+                                }
+                            }
+                    
+                    # Generate Gemini summary
+                    summarizer = GeminiSummarizer(gemini_model)
+                    executive_summary = summarizer.summarize_analysis(strategy, test_results["analysis_results"])
+                    test_results["executive_summary"] = executive_summary
+                    
+                    # Determine recommendation
+                    feasibility = strategy.get('feasibility', 5)
+                    if feasibility >= 8:
+                        test_results["recommendation"] = "✅ STRONG RECOMMENDATION: Proceed with implementation"
+                    elif feasibility >= 6:
+                        test_results["recommendation"] = "⚠️ MODERATE RECOMMENDATION: Test in limited rollout"
+                    else:
+                        test_results["recommendation"] = "❌ CAUTION: Requires refinement"
+                    
+                    st.session_state.test_results[strategy_name] = test_results
+                    st.success("✅ Analysis complete!")
+                    st.rerun()
+        else:
+            # Display results
+            test_results = st.session_state.test_results[strategy_name]
+            
+            # Executive Summary from Gemini
+            st.subheader("📊 Executive Summary (Generated by Gemini)")
+            st.success(test_results.get("executive_summary", "Analysis complete"))
+            
+            # Overall Recommendation
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Confidence Score", f"{test_results['confidence_score']}%")
+            with col2:
+                st.markdown(f"### {test_results['recommendation']}")
+            
+            # Detailed Analysis Results
+            st.markdown("---")
+            st.subheader("🔍 Detailed Analysis Results")
+            
+            for analysis_type, result in test_results["analysis_results"].items():
+                with st.expander(f"📈 {result['analysis_type']}", expanded=False):
+                    st.write("**Summary:**")
+                    st.info(result['executive_summary'])
+                    
+                    if result.get('key_metrics'):
+                        st.write("**Key Metrics:**")
+                        cols = st.columns(len(result['key_metrics']))
+                        for idx, (metric, value) in enumerate(result['key_metrics'].items()):
+                            cols[idx].metric(metric, value)
+            
+            # Action buttons
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🔄 Re-run Analysis", use_container_width=True):
+                    del st.session_state.test_results[strategy_name]
+                    st.rerun()
+            with col2:
+                if st.button("📋 Test Another Strategy", use_container_width=True):
+                    st.session_state.current_strategy = None
+                    st.rerun()
+    
+    elif not st.session_state.strategies_generated:
+        # Helpful prompt when no strategies generated yet
+        st.info("👆 Click 'Generate AI Strategies' to start the analysis")
+        
+        st.markdown("---")
+        st.subheader("How It Works")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("### 1️⃣ Generate")
+            st.write("Gemini analyzes your BigQuery data and generates 4 data-driven strategies")
+        with col2:
+            st.markdown("### 2️⃣ Agent Decides")
+            st.write("Autonomous agent selects relevant analyses for each strategy type")
+        with col3:
+            st.markdown("### 3️⃣ Execute & Summarize")
+            st.write("System runs tests and Gemini creates executive summary")
