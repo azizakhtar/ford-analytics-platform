@@ -1,6 +1,6 @@
 """
 DATASPHERE ANALYTICS - COMPLETE APP
-Single app.py file with all pages including Agent Evaluation Dashboard
+Single app.py file with ALL pages: Home, SQL Chat, Dashboard, AI Agent System, Agent Evaluation
 """
 
 import streamlit as st
@@ -17,7 +17,7 @@ import seaborn as sns
 
 st.set_page_config(
     page_title="DataSphere Analytics",
-    page_icon="📊",
+    page_icon="chart_with_upwards_trend",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -66,7 +66,6 @@ class AgentEvaluationMetrics:
         """Evaluate the quality of a generated strategy"""
         scores = {}
         
-        # 1. Specificity Score
         description = strategy.get('description', '')
         specificity = 0
         
@@ -86,7 +85,6 @@ class AgentEvaluationMetrics:
         
         scores['specificity_score'] = min(specificity, 100)
         
-        # 2. Data-Driven Score
         data_driven = 0
         
         if strategy.get('rationale') and len(strategy.get('rationale', '')) > 50:
@@ -101,11 +99,8 @@ class AgentEvaluationMetrics:
             data_driven += 20
         
         scores['data_driven_score'] = min(data_driven, 100)
-        
-        # 3. Feasibility Score
         scores['feasibility_score'] = strategy.get('feasibility', 5) * 10
         
-        # 4. Impact Clarity
         impact = strategy.get('impact', '')
         impact_clarity = 0
         
@@ -121,7 +116,6 @@ class AgentEvaluationMetrics:
         
         scores['impact_clarity_score'] = min(impact_clarity, 100)
         
-        # Overall Strategy Quality Score
         overall = (
             scores['specificity_score'] * 0.25 +
             scores['data_driven_score'] * 0.30 +
@@ -136,7 +130,6 @@ class AgentEvaluationMetrics:
         """Evaluate quality of an analysis"""
         scores = {}
         
-        # 1. Completeness
         completeness = 0
         required_fields = ['analysis_type', 'executive_summary', 'key_metrics']
         
@@ -146,7 +139,6 @@ class AgentEvaluationMetrics:
         
         scores['completeness_score'] = min(completeness, 100)
         
-        # 2. Visualization Quality
         viz_score = 0
         
         if 'visualizations' in analysis_result and analysis_result['visualizations']:
@@ -159,7 +151,6 @@ class AgentEvaluationMetrics:
         
         scores['visualization_score'] = min(viz_score, 100)
         
-        # 3. Insight Depth
         summary = analysis_result.get('executive_summary', '')
         insight_depth = 0
         
@@ -179,7 +170,6 @@ class AgentEvaluationMetrics:
         
         scores['insight_depth_score'] = min(insight_depth, 100)
         
-        # 4. Metric Relevance
         metrics = analysis_result.get('key_metrics', {})
         metric_relevance = 0
         
@@ -194,7 +184,6 @@ class AgentEvaluationMetrics:
         
         scores['metric_relevance_score'] = min(metric_relevance, 100)
         
-        # Overall Analysis Quality
         overall = (
             scores['completeness_score'] * 0.25 +
             scores['visualization_score'] * 0.30 +
@@ -220,7 +209,6 @@ class AgentEvaluationMetrics:
         optimal = set(optimal_analyses.get(strategy_type, []))
         actual = set(analyses_run)
         
-        # 1. Relevance Score
         if optimal:
             relevant_count = len(optimal.intersection(actual))
             relevance = (relevant_count / len(optimal)) * 100
@@ -229,7 +217,6 @@ class AgentEvaluationMetrics:
         
         scores['relevance_score'] = relevance
         
-        # 2. Coverage Score
         if optimal:
             coverage = (len(optimal.intersection(actual)) / len(optimal)) * 100
         else:
@@ -237,13 +224,11 @@ class AgentEvaluationMetrics:
         
         scores['coverage_score'] = coverage
         
-        # 3. Efficiency Score
         unnecessary = actual - optimal
         efficiency = 100 - (len(unnecessary) * 20)
         
         scores['efficiency_score'] = max(efficiency, 0)
         
-        # Overall Decision Quality
         overall = (
             scores['relevance_score'] * 0.40 +
             scores['coverage_score'] * 0.40 +
@@ -257,7 +242,6 @@ class AgentEvaluationMetrics:
         """Evaluate quality of executive summary"""
         scores = {}
         
-        # 1. Conciseness
         word_count = len(summary.split())
         
         if 50 <= word_count <= 150:
@@ -271,7 +255,6 @@ class AgentEvaluationMetrics:
         
         scores['conciseness_score'] = conciseness
         
-        # 2. Clarity
         clarity = 0
         
         recommendation_words = ['recommend', 'consider', 'do not recommend', 'proceed', 'caution']
@@ -286,7 +269,6 @@ class AgentEvaluationMetrics:
         
         scores['clarity_score'] = min(clarity, 100)
         
-        # 3. Evidence-Based
         evidence = 0
         
         analysis_types = [result.get('analysis_type', '') for result in test_results.get('analysis_results', {}).values()]
@@ -301,7 +283,6 @@ class AgentEvaluationMetrics:
         
         scores['evidence_based_score'] = min(evidence, 100)
         
-        # 4. Actionability
         actionability = 0
         
         action_phrases = ['next step', 'should', 'implement', 'test', 'launch', 'monitor', 'track']
@@ -316,7 +297,6 @@ class AgentEvaluationMetrics:
         
         scores['actionability_score'] = min(actionability, 100)
         
-        # Overall Summary Quality
         overall = (
             scores['conciseness_score'] * 0.20 +
             scores['clarity_score'] * 0.30 +
@@ -331,26 +311,21 @@ class AgentEvaluationMetrics:
         """Calculate overall agent system performance score"""
         strategy = test_results['strategy']
         
-        # 1. Strategy Quality
         strategy_scores = self.evaluate_strategy_quality(strategy, test_results)
         
-        # 2. Analysis Quality
         analysis_scores_list = []
         for analysis_result in test_results['analysis_results'].values():
             analysis_scores_list.append(self.evaluate_analysis_quality(analysis_result))
         
         avg_analysis_score = np.mean([s['overall_quality'] for s in analysis_scores_list]) if analysis_scores_list else 0
         
-        # 3. Decision Quality
         decision_scores = self.evaluate_agent_decision_quality(strategy, test_results['analyses_run'])
         
-        # 4. Summary Quality
         summary_scores = self.evaluate_gemini_summary_quality(
             test_results.get('executive_summary', ''),
             test_results
         )
         
-        # Overall System Performance
         overall_performance = (
             strategy_scores['overall_quality'] * 0.25 +
             avg_analysis_score * 0.35 +
@@ -414,7 +389,6 @@ class AgentEvaluationMetrics:
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
         df = pd.DataFrame(self.metrics_history)
         
-        # 1. Overall Performance Trend
         ax1.plot(range(len(df)), df['overall_performance'], 'o-', linewidth=2, markersize=8, color='#1f77b4')
         ax1.axhline(y=80, color='green', linestyle='--', label='Target (80)', linewidth=2)
         ax1.axhline(y=df['overall_performance'].mean(), color='blue', linestyle='--', label='Average', linewidth=2)
@@ -425,7 +399,6 @@ class AgentEvaluationMetrics:
         ax1.grid(True, alpha=0.3)
         ax1.set_ylim([0, 105])
         
-        # 2. Component Breakdown
         if len(df) > 0:
             latest = df.iloc[-1]
             components = {
@@ -450,7 +423,6 @@ class AgentEvaluationMetrics:
                 ax2.text(bar.get_x() + bar.get_width()/2., height + 2,
                         f'{height:.1f}', ha='center', va='bottom', fontweight='bold', fontsize=10)
         
-        # 3. Grade Distribution
         grades = df['grade'].value_counts().reindex(['A', 'B', 'C', 'D', 'F'], fill_value=0)
         colors_map = {'A': '#2ecc71', 'B': '#95d5b2', 'C': '#ffd93d', 'D': '#ff9100', 'F': '#e74c3c'}
         grade_colors = [colors_map.get(g, 'gray') for g in grades.index]
@@ -467,7 +439,6 @@ class AgentEvaluationMetrics:
                 ax3.text(bar.get_x() + bar.get_width()/2., height + 0.1,
                         f'{int(height)}', ha='center', va='bottom', fontweight='bold', fontsize=10)
         
-        # 4. Performance Heatmap
         if len(df) > 1:
             perf_data = []
             for _, row in df.iterrows():
@@ -537,14 +508,17 @@ def initialize_session_state():
         st.session_state.test_results = {}
     
     if 'current_page' not in st.session_state:
-        st.session_state.current_page = "Home"
+        st.session_state.current_page = "app"
+    
+    if 'sql_history' not in st.session_state:
+        st.session_state.sql_history = []
 
 # ============================================================================
 # PAGE RENDERING FUNCTIONS
 # ============================================================================
 
-def render_home_page():
-    """Render home/dashboard page"""
+def render_app_page():
+    """Render main app/home page"""
     st.title("DataSphere Analytics")
     st.markdown("### AI-Powered Business Intelligence Platform")
     
@@ -584,38 +558,59 @@ def render_home_page():
     st.info("Select a page from the sidebar to get started")
 
 
-def render_strategy_page():
-    """Render strategy generation page"""
-    st.title("Strategy Generator")
-    st.markdown("Generate data-driven business strategies")
+def render_sql_chat_page():
+    """Render SQL chat page"""
+    st.title("Intelligent SQL Generator")
+    st.markdown("### Natural Language to SQL - Describe your analysis in plain English")
     
     st.markdown("---")
     
-    col1, col2 = st.columns([2, 1])
+    st.info("SQL Chat interface would be implemented here")
     
-    with col1:
-        strategy_type = st.selectbox(
-            "Strategy Type",
-            ["Churn Reduction", "Sales Growth", "Customer Segmentation", "Pricing Optimization"]
-        )
+    st.markdown("**Ask your question...**")
     
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        generate_btn = st.button("Generate Strategy", type="primary", use_container_width=True)
+    user_query = st.text_area(
+        "e.g., 'Show me the top 5 customers by spending'",
+        height=100,
+        key="sql_query_input"
+    )
     
-    if generate_btn:
-        with st.spinner("Generating strategy..."):
-            st.success("Strategy generated successfully")
-            
-            st.markdown("### Generated Strategy")
-            st.markdown("**Strategy Name:** High-Value Customer Retention Program")
-            st.markdown("**Description:** Implement targeted retention campaigns for high-value customer segments")
-            st.markdown("**Expected Impact:** 15-20% reduction in churn rate")
-            st.markdown("**Feasibility:** 8/10")
+    if st.button("Generate SQL", type="primary"):
+        if user_query:
+            with st.spinner("Generating SQL query..."):
+                st.markdown("### Generated SQL")
+                st.code("""
+SELECT 
+    customer_id,
+    customer_name,
+    SUM(order_total) as total_spending
+FROM customers c
+JOIN orders o ON c.customer_id = o.customer_id
+GROUP BY customer_id, customer_name
+ORDER BY total_spending DESC
+LIMIT 5;
+                """, language="sql")
+                
+                st.markdown("### Query Explanation")
+                st.markdown("""
+                This query retrieves the top 5 customers by total spending by:
+                1. Joining the customers and orders tables
+                2. Summing the order totals for each customer
+                3. Sorting by total spending in descending order
+                4. Limiting results to 5 customers
+                """)
+                
+                st.markdown("### Results")
+                sample_data = pd.DataFrame({
+                    'customer_id': [101, 102, 103, 104, 105],
+                    'customer_name': ['Alice Johnson', 'Bob Smith', 'Carol White', 'David Brown', 'Eve Davis'],
+                    'total_spending': [15420.50, 12350.75, 11200.00, 10980.25, 9875.60]
+                })
+                st.dataframe(sample_data, use_container_width=True)
 
 
-def render_analytics_page():
-    """Render analytics page"""
+def render_dashboard_page():
+    """Render analytics dashboard page"""
     st.title("Analytics Dashboard")
     st.markdown("Comprehensive data analysis and insights")
     
@@ -630,12 +625,113 @@ def render_analytics_page():
     
     st.markdown("---")
     
-    chart_data = pd.DataFrame(
-        np.random.randn(20, 3),
-        columns=['Revenue', 'Customers', 'Orders']
+    tab1, tab2, tab3 = st.tabs(["Revenue Trends", "Customer Analytics", "Product Performance"])
+    
+    with tab1:
+        st.markdown("### Revenue Trends")
+        chart_data = pd.DataFrame(
+            np.random.randn(30, 1) * 100 + 50000,
+            columns=['Revenue']
+        )
+        st.line_chart(chart_data)
+    
+    with tab2:
+        st.markdown("### Customer Segmentation")
+        segment_data = pd.DataFrame({
+            'Segment': ['Gold', 'Silver', 'Bronze'],
+            'Count': [150, 450, 634],
+            'Revenue': [1200000, 800000, 400000]
+        })
+        st.dataframe(segment_data, use_container_width=True)
+    
+    with tab3:
+        st.markdown("### Top Products")
+        product_data = pd.DataFrame({
+            'Product': ['Product A', 'Product B', 'Product C', 'Product D', 'Product E'],
+            'Sales': [45000, 38000, 32000, 28000, 25000],
+            'Growth': ['+15%', '+8%', '+12%', '-3%', '+5%']
+        })
+        st.dataframe(product_data, use_container_width=True)
+
+
+def render_ai_agent_page():
+    """Render AI agent system page"""
+    st.title("Agentic AI System")
+    st.markdown("Multi-agent collaboration for intelligent business insights")
+    
+    st.markdown("---")
+    
+    st.markdown("### AI Agents")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### Strategy Generator Agent")
+        st.markdown("""
+        - Analyzes business data
+        - Generates strategic recommendations
+        - Prioritizes initiatives by impact
+        - Assesses feasibility
+        """)
+        
+        st.markdown("#### Data Analyst Agent")
+        st.markdown("""
+        - Runs complex analyses
+        - Creates visualizations
+        - Identifies patterns and trends
+        - Provides statistical insights
+        """)
+    
+    with col2:
+        st.markdown("#### Executive Summarizer Agent")
+        st.markdown("""
+        - Synthesizes findings
+        - Creates executive summaries
+        - Provides recommendations
+        - Highlights key risks/opportunities
+        """)
+        
+        st.markdown("#### Performance Evaluator Agent")
+        st.markdown("""
+        - Tracks agent performance
+        - Evaluates output quality
+        - Monitors accuracy metrics
+        - Improves over time
+        """)
+    
+    st.markdown("---")
+    
+    st.markdown("### Test Agent System")
+    
+    strategy_type = st.selectbox(
+        "Select Strategy Type",
+        ["Churn Reduction", "Sales Growth", "Customer Segmentation", "Pricing Optimization"]
     )
     
-    st.line_chart(chart_data)
+    if st.button("Run Agent Workflow", type="primary"):
+        with st.spinner("Running multi-agent workflow..."):
+            st.success("Agent workflow completed successfully")
+            
+            st.markdown("### Agent Outputs")
+            
+            with st.expander("Strategy Generator Output", expanded=True):
+                st.markdown("**Generated Strategy:** High-Value Customer Retention Program")
+                st.markdown("**Description:** Implement targeted retention campaigns")
+                st.markdown("**Expected Impact:** 15-20% reduction in churn")
+                st.markdown("**Feasibility:** 8/10")
+            
+            with st.expander("Data Analyst Output"):
+                st.markdown("**Analysis Completed:**")
+                st.markdown("- Customer segmentation analysis")
+                st.markdown("- Churn prediction model")
+                st.markdown("- Lifetime value calculation")
+                
+            with st.expander("Executive Summary"):
+                st.markdown("""
+                Based on comprehensive analysis, we recommend implementing a targeted 
+                retention program for high-value customer segments. Analysis shows this 
+                could reduce churn by 15-20% and protect $2.4M in annual revenue.
+                """)
 
 
 def render_evaluation_page():
@@ -1083,9 +1179,15 @@ def main():
         
         page = st.radio(
             "Navigation",
-            ["Home", "Strategy Generator", "Analytics Dashboard", "Agent Evaluation"],
+            ["app", "sql chat", "dashboard", "ai agent", "agent evaluation"],
             key="navigation"
         )
+        
+        st.markdown("---")
+        
+        if st.button("Back to Main Menu", use_container_width=True):
+            st.session_state.current_page = "app"
+            st.rerun()
         
         st.markdown("---")
         
@@ -1095,13 +1197,15 @@ def main():
         st.markdown("---")
         st.caption("Version 1.0.0")
     
-    if page == "Home":
-        render_home_page()
-    elif page == "Strategy Generator":
-        render_strategy_page()
-    elif page == "Analytics Dashboard":
-        render_analytics_page()
-    elif page == "Agent Evaluation":
+    if page == "app":
+        render_app_page()
+    elif page == "sql chat":
+        render_sql_chat_page()
+    elif page == "dashboard":
+        render_dashboard_page()
+    elif page == "ai agent":
+        render_ai_agent_page()
+    elif page == "agent evaluation":
         render_evaluation_page()
 
 
