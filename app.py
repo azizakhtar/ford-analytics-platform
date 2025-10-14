@@ -1138,64 +1138,88 @@ class AnalysisEngine:
             return self._mock_segmentation_analysis(strategy)
     
     def analyze_revenue_impact(self, strategy):
+        impact_text = strategy.get('impact', 'Moderate revenue impact expected')
+        feasibility = strategy.get('feasibility', 7)
+        
         return {
             "analysis_type": "REVENUE IMPACT",
-            "executive_summary": f"Revenue modeling shows {strategy.get('impact', 'moderate')} with {strategy.get('feasibility', 7)}/10 feasibility.",
+            "executive_summary": f"Revenue modeling shows strong potential based on strategy feasibility score of {feasibility}/10. Expected impact: {impact_text}",
             "key_metrics": {
-                "Impact": strategy.get('impact', 'TBD'),
-                "Cost": "Medium",
-                "Timeline": "6-9 months"
+                "Expected Impact": impact_text,
+                "Implementation Cost": "Medium",
+                "Timeline": "6-9 months",
+                "Feasibility": f"{feasibility}/10"
             }
         }
     
     def analyze_customer_lifetime_value(self, strategy):
         return {
             "analysis_type": "CLV ANALYSIS",
-            "executive_summary": "High-value segments show strong potential. Top 20% contribute 60% of value.",
+            "executive_summary": "Customer Lifetime Value analysis reveals significant opportunity in high-value segments. The top 20% of customers contribute approximately 60% of total customer value, indicating strong potential for targeted retention strategies.",
             "key_metrics": {
-                "Avg CLV": "$45K",
-                "Top CLV": "$120K",
-                "Concentration": "60% in top 20%"
+                "Average CLV": "$45,000",
+                "Top Segment CLV": "$120,000",
+                "Value Concentration": "60% in top 20%",
+                "Strategy Alignment": "High"
             }
         }
     
     def analyze_geographic_analysis(self, strategy):
         return {
             "analysis_type": "GEOGRAPHIC ANALYSIS",
-            "executive_summary": "Strong regional variations. Top 3 states represent 45% of volume.",
+            "executive_summary": "Geographic analysis shows strong regional variations in loan performance and customer distribution. The top 3 states represent 45% of total volume, presenting opportunities for focused regional strategies.",
             "key_metrics": {
-                "States": "45",
-                "Concentration": "45% in top 3",
-                "Variance": "High"
+                "States Covered": "45",
+                "Top 3 Concentration": "45%",
+                "Regional Variance": "High",
+                "Expansion Opportunity": "Moderate"
             }
         }
     
     def _mock_sales_forecast(self, strategy):
+        impact_text = strategy.get('impact', 'Moderate growth expected')
         return {
             "analysis_type": "SALES FORECASTING",
-            "executive_summary": f"Forecast projects growth. Impact: {strategy.get('impact', 'TBD')}",
-            "key_metrics": {"Growth": "18%", "Revenue": "$850K"}
+            "executive_summary": f"Sales forecasting model projects positive growth trajectory. {impact_text}",
+            "key_metrics": {
+                "Projected Growth": "18%",
+                "Revenue Increase": "$850,000",
+                "Confidence Level": "High"
+            }
         }
     
     def _mock_churn_analysis(self, strategy):
+        impact_text = strategy.get('impact', 'Churn reduction expected')
         return {
             "analysis_type": "CHURN PREDICTION",
-            "executive_summary": f"High-risk customers identified. Impact: {strategy.get('impact', 'TBD')}",
-            "key_metrics": {"High Risk": "320", "Revenue at Risk": "$2.4M"}
+            "executive_summary": f"Churn analysis identifies high-risk customer segments. {impact_text}",
+            "key_metrics": {
+                "High Risk Customers": "320",
+                "Revenue at Risk": "$2.4M",
+                "Expected Reduction": "10-15%"
+            }
         }
     
     def _mock_pricing_analysis(self, strategy):
         return {
             "analysis_type": "PRICING ELASTICITY",
-            "executive_summary": "Moderate price sensitivity detected.",
-            "key_metrics": {"Elasticity": "-0.8", "R²": "0.75"}
+            "executive_summary": "Pricing elasticity analysis shows moderate price sensitivity with opportunities for strategic price optimization.",
+            "key_metrics": {
+                "Elasticity Coefficient": "-0.8",
+                "Model R² Score": "0.75",
+                "Optimal Price Point": "$35,000-$45,000"
+            }
         }
     
     def _mock_segmentation_analysis(self, strategy):
         return {
             "analysis_type": "SEGMENTATION",
-            "executive_summary": "Clear value tiers identified.",
-            "key_metrics": {"Customers": "5,000", "Segments": "3"}
+            "executive_summary": "Customer segmentation reveals distinct value tiers with opportunities for targeted marketing strategies.",
+            "key_metrics": {
+                "Total Customers": "5,000",
+                "Segments Identified": "3",
+                "Top Segment Size": "35%"
+            }
         }
 
 # ============================================================================
