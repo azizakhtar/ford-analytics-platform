@@ -751,13 +751,61 @@ class AnalysisEngine:
             
             if len(df) < 6:
                 return self._mock_sales_forecast(strategy)
-    
-    def analyze_churn_prediction(self, strategy):
             
             df['month'] = pd.to_datetime(df['month'])
             df = df.sort_values('month')
             
             X = np.arange(len(df)).reshape(-1, 1)
+            y_sales = df['monthly_sales'].values
+            
+            model = LinearRegression()
+            model.fit(X, y_sales)
+            y_pred = model.predict(X)
+            
+            future_months = 12
+            X_future = np.arange(len(df), len(df) + future_months).reshape(-1, 1)
+            forecast = model.predict(X_future)
+            
+            strategy_impact = strategy.get('feasibility', 7) / 10 * 0.15
+            adjusted_forecast = forecast * (1 + strategy_impact)
+            
+            r2 = r2_score(y_sales, y_pred)
+            
+            fig, ax = plt.subplots(figsize=(12, 6))
+            
+            ax.plot(df['month'], y_sales, 'o-', label='Actual Sales', linewidth=2, markersize=6, color='blue')
+            
+            future_dates = pd.date_range(df['month'].iloc[-1] + pd.DateOffset(months=1), periods=future_months, freq='M')
+            ax.plot(future_dates, forecast, 's--', label='Baseline Forecast', linewidth=2, markersize=6, color='red')
+            ax.plot(future_dates, adjusted_forecast, '^-', label='With Strategy', linewidth=2, markersize=6, color='green')
+            
+            ax.set_xlabel('Month')
+            ax.set_ylabel('Sales Volume')
+            ax.set_title(f'Sales Forecasting Analysis', fontsize=14, fontweight='bold')
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            
+            current_sales = y_sales[-1]
+            baseline_growth = ((forecast[-1] - current_sales) / current_sales * 100)
+            strategy_growth = ((adjusted_forecast[-1] - current_sales) / current_sales * 100)
+            
+            return {
+                "analysis_type": "SALES FORECASTING MODEL",
+                "executive_summary": f"Linear regression (R²={r2:.3f}) projects {strategy_growth:.1f}% growth with strategy. Baseline: {baseline_growth:.1f}%. Incremental impact: {(strategy_growth-baseline_growth):.1f}%.",
+                "key_metrics": {
+                    "Model R²": f"{r2:.3f}",
+                    "Baseline Growth": f"{baseline_growth:.1f}%",
+                    "Strategy Growth": f"{strategy_growth:.1f}%",
+                    "Incremental": f"{(strategy_growth-baseline_growth):.1f}%"
+                },
+                "visualizations": [fig]
+            }
+        except Exception as e:
+            return self._mock_sales_forecast(strategy)
+    
+    def analyze_churn_prediction(self, strategy):
             y_sales = df['monthly_sales'].values
             df = df.sort_values('month')
             
