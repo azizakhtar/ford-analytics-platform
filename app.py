@@ -756,7 +756,7 @@ class ManagerAgent:
         return {
             "agent": self.name,
             "action": "delegation",
-            "message": f"📊 **Delegating to Data Scientist Agent**\n\n"
+            "message": f"**Delegating to Data Scientist Agent**\n\n"
                       f"I'm assigning the '{strategy.get('name')}' strategy to our Data Scientist Agent for comprehensive analysis. "
                       f"They will run multiple analytical models and provide detailed findings."
         }
@@ -776,7 +776,7 @@ class DataScientistAgent:
         return {
             "agent": self.name,
             "action": "acknowledgment",
-            "message": f"📈 **Assignment Received**\n\n"
+            "message": f"**Assignment Received**\n\n"
                       f"I've received the '{strategy.get('name')}' strategy from the Manager. "
                       f"Let me determine which analyses are most relevant for this strategy type."
         }
@@ -809,7 +809,7 @@ class DataScientistAgent:
         return {
             "agent": self.name,
             "action": "analysis_progress",
-            "message": f"🔬 **Analysis {index}/{total}**: Running {analysis_type.replace('_', ' ').title()}..."
+            "message": f"**Analysis {index}/{total}**: Running {analysis_type.replace('_', ' ').title()}..."
         }
     
     def report_analysis_complete(self, analysis_type, result):
@@ -819,7 +819,7 @@ class DataScientistAgent:
             "agent": self.name,
             "action": "analysis_result",
             "analysis_type": analysis_type,
-            "message": f"✅ **{result.get('analysis_type', analysis_type.upper())} - Complete**\n\n"
+            "message": f"**{result.get('analysis_type', analysis_type.upper())} - Complete**\n\n"
                       f"{summary}"
         }
     
@@ -828,7 +828,7 @@ class DataScientistAgent:
         return {
             "agent": self.name,
             "action": "final_summary",
-            "message": f"📋 **Analysis Complete for '{strategy.get('name')}'**\n\n"
+            "message": f"**Analysis Complete for '{strategy.get('name')}'**\n\n"
                       f"I've completed {len(all_results)} analyses. The results show:\n"
                       f"• All requested analyses executed successfully\n"
                       f"• Visualizations generated for key findings\n"
@@ -1347,21 +1347,21 @@ elif st.session_state.page == 'AI Agent':
     with col2:
         st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics-platform/main/transparent.png", width=300)
     
-    st.title("🤖 Human-in-the-Loop Agentic AI System")
+    st.title("Human-in-the-Loop Agentic AI System")
     st.markdown("**Manager Agent** proposes strategies → **You** approve → **Data Scientist Agent** executes analysis")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.subheader("👔 Manager Agent")
+        st.subheader("Manager Agent")
         st.markdown("Analyzes data & proposes strategies")
     
     with col2:
-        st.subheader("👤 You Decide")
+        st.subheader("You Decide")
         st.markdown("Review & approve strategies")
     
     with col3:
-        st.subheader("📊 Data Scientist Agent")
+        st.subheader("Data Scientist Agent")
         st.markdown("Runs analysis & generates insights")
     
     st.markdown("---")
@@ -1395,31 +1395,27 @@ elif st.session_state.page == 'AI Agent':
         action = message.get('action', 'info')
         
         if agent_name == "Manager Agent":
-            avatar = "👔"
             color = "#1f77b4"
         elif agent_name == "Data Scientist Agent":
-            avatar = "📊"
             color = "#2ca02c"
         elif agent_name == "You":
-            avatar = "👤"
             color = "#ff7f0e"
         else:
-            avatar = "💬"
             color = "#7f7f7f"
         
         st.markdown(f"""
         <div style="background-color: {color}15; padding: 15px; border-radius: 10px; 
                     border-left: 4px solid {color}; margin: 10px 0;">
             <div style="font-weight: bold; color: {color}; margin-bottom: 8px;">
-                {avatar} {agent_name}
+                {agent_name}
             </div>
-            <div style="color: #333; line-height: 1.6;">
+            <div style="color: #FFFFFF; line-height: 1.6;">
                 {msg_content}
             </div>
         </div>
         """, unsafe_allow_html=True)
     
-    if st.button("🚀 Start Agentic Workflow", type="primary", use_container_width=True):
+    if st.button("Start Agentic Workflow", type="primary", use_container_width=True):
         # Clear previous messages
         st.session_state.agent_messages = []
         
@@ -1431,7 +1427,7 @@ elif st.session_state.page == 'AI Agent':
             intro_msg = {
                 "agent": "Manager Agent",
                 "action": "introduction",
-                "message": "👔 **Manager Agent Initialized**\n\nHello! I'm analyzing your business data to identify strategic opportunities. Let me gather insights from BigQuery..."
+                "message": "**Manager Agent Initialized**\n\nHello! I'm analyzing your business data to identify strategic opportunities. Let me gather insights from BigQuery..."
             }
             st.session_state.agent_messages.append(intro_msg)
             
@@ -1458,7 +1454,7 @@ elif st.session_state.page == 'AI Agent':
         
         # Display Agent Conversation
         if st.session_state.agent_messages:
-            with st.expander("🤖 Agent Communication Log", expanded=True):
+            with st.expander("Agent Communication Log", expanded=True):
                 for message in st.session_state.agent_messages:
                     display_agent_message(message)
         
@@ -1529,7 +1525,7 @@ elif st.session_state.page == 'AI Agent':
             col1, col2, col3 = st.columns([2, 1, 1])
             
             with col1:
-                if st.button(f"✅ Approve Testing ({len(st.session_state.selected_strategies)}/4)", type="primary", use_container_width=True):
+                if st.button(f"Approve Testing ({len(st.session_state.selected_strategies)}/4)", type="primary", use_container_width=True):
                     # Manager requests approval
                     approval_msg = st.session_state.manager_agent.request_approval(len(st.session_state.selected_strategies))
                     st.session_state.agent_messages.append(approval_msg)
@@ -1538,7 +1534,7 @@ elif st.session_state.page == 'AI Agent':
                     user_msg = {
                         "agent": "You",
                         "action": "approval",
-                        "message": f"✅ **Approved**\n\nPlease proceed with testing the {len(st.session_state.selected_strategies)} selected strategies."
+                        "message": f"**Approved**\n\nPlease proceed with testing the {len(st.session_state.selected_strategies)} selected strategies."
                     }
                     st.session_state.agent_messages.append(user_msg)
                     
@@ -1565,7 +1561,7 @@ elif st.session_state.page == 'AI Agent':
     
     if st.session_state.get('batch_testing', False):
         st.markdown("---")
-        st.header("🤖 Agents at Work")
+        st.header("Agents at Work")
         
         # Show real-time agent messages
         message_container = st.container()
@@ -1667,7 +1663,7 @@ elif st.session_state.page == 'AI Agent':
                     manager_summary = {
                         "agent": "Manager Agent",
                         "action": "executive_summary",
-                        "message": f"📋 **Executive Summary for '{strategy_name}'**\n\n{summary}"
+                        "message": f"**Executive Summary for '{strategy_name}'**\n\n{summary}"
                     }
                     st.session_state.agent_messages.append(manager_summary)
                     display_agent_message(manager_summary)
@@ -1690,7 +1686,7 @@ elif st.session_state.page == 'AI Agent':
             final_summary = {
                 "agent": "Manager Agent",
                 "action": "completion",
-                "message": f"✅ **All Analyses Complete**\n\nI've worked with the Data Scientist Agent to complete analysis on {len(selected_objs)} strategies. All results are ready for your review below."
+                "message": f"**All Analyses Complete**\n\nI've worked with the Data Scientist Agent to complete analysis on {len(selected_objs)} strategies. All results are ready for your review below."
             }
             st.session_state.agent_messages.append(final_summary)
             display_agent_message(final_summary)
@@ -1702,7 +1698,7 @@ elif st.session_state.page == 'AI Agent':
     
     if st.session_state.test_results and not st.session_state.get('batch_testing', False):
         st.markdown("---")
-        st.header("📊 Test Results")
+        st.header("Test Results")
         
         st.subheader("Overview")
         cols = st.columns(len(st.session_state.test_results))
@@ -1773,47 +1769,47 @@ elif st.session_state.page == 'AI Agent':
                 st.rerun()
     
     elif not st.session_state.strategies_generated:
-        st.info("👆 Click 'Start Agentic Workflow' above to begin")
+        st.info("Click 'Start Agentic Workflow' above to begin")
         
         st.markdown("---")
-        st.subheader("🤖 Human-in-the-Loop Agentic System")
+        st.subheader("Human-in-the-Loop Agentic System")
         
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.markdown("### 1️⃣ Manager Agent")
-            st.write("📋 Analyzes data from BigQuery")
-            st.write("💡 Generates strategic recommendations")
-            st.write("🗣️ Explains rationale to you")
+            st.markdown("### Step 1: Manager Agent")
+            st.write("Analyzes data from BigQuery")
+            st.write("Generates strategic recommendations")
+            st.write("Explains rationale to you")
         
         with col2:
-            st.markdown("### 2️⃣ Your Review")
-            st.write("✅ Review proposed strategies")
-            st.write("🎯 Select strategies to test")
-            st.write("👍 Approve for analysis")
+            st.markdown("### Step 2: Your Review")
+            st.write("Review proposed strategies")
+            st.write("Select strategies to test")
+            st.write("Approve for analysis")
         
         with col3:
-            st.markdown("### 3️⃣ Data Scientist")
-            st.write("📊 Receives assignments")
-            st.write("🔬 Runs multiple analyses")
-            st.write("📈 Generates visualizations")
+            st.markdown("### Step 3: Data Scientist")
+            st.write("Receives assignments")
+            st.write("Runs multiple analyses")
+            st.write("Generates visualizations")
         
         with col4:
-            st.markdown("### 4️⃣ Results")
-            st.write("📋 Executive summaries")
-            st.write("📊 Interactive charts")
-            st.write("✅ Recommendations")
+            st.markdown("### Step 4: Results")
+            st.write("Executive summaries")
+            st.write("Interactive charts")
+            st.write("Recommendations")
         
         st.markdown("---")
         
         st.info("""
         **Key Features:**
-        - 👔 **Manager Agent** uses Gemini to understand your business context
-        - 📊 **Data Scientist Agent** autonomously selects and runs relevant analyses
-        - 🤝 **Human-in-the-Loop**: You approve strategies before testing begins
-        - 💬 **Real-time Communication**: Watch agents work and communicate
-        - 📈 **Comprehensive Analysis**: Multiple models with visualizations
-        - 🎯 **Actionable Insights**: Clear recommendations based on data
+        - **Manager Agent** uses Gemini to understand your business context
+        - **Data Scientist Agent** autonomously selects and runs relevant analyses
+        - **Human-in-the-Loop**: You approve strategies before testing begins
+        - **Real-time Communication**: Watch agents work and communicate
+        - **Comprehensive Analysis**: Multiple models with visualizations
+        - **Actionable Insights**: Clear recommendations based on data
         """)
 
 # ============================================================================
