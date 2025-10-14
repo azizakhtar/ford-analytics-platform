@@ -860,8 +860,6 @@ class AnalysisEngine:
             return self._mock_sales_forecast(strategy)
     
     def analyze_churn_prediction(self, strategy):
-    
-    def analyze_churn_prediction(self, strategy):
         try:
             query = """
             SELECT 
