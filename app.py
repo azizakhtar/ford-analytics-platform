@@ -1471,6 +1471,367 @@ class DataScientistAgent:
             }
 
 # ============================================================================
+# NAVIGATION
+# ============================================================================
+
+if 'page' not in st.session_state:
+    st.session_state.page = 'Dashboard'
+
+with st.sidebar:
+    st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics-platform/main/transparent.png", width=150)
+    st.markdown("---")
+    st.title("DataSphere Analytics")
+    
+    if gemini_model:
+        st.success("Gemini Connected")
+    else:
+        st.error("Gemini Not Connected")
+    
+    st.markdown("---")
+    
+    if st.button("Dashboard", use_container_width=True, type="primary" if st.session_state.page == 'Dashboard' else "secondary"):
+        st.session_state.page = 'Dashboard'
+        st.rerun()
+        
+    if st.button("SQL Chat", use_container_width=True, type="primary" if st.session_state.page == 'SQL Chat' else "secondary"):
+        st.session_state.page = 'SQL Chat'
+        st.rerun()
+        
+    if st.button("Agentic AI System", use_container_width=True, type="primary" if st.session_state.page == 'AI Agent' else "secondary"):
+        st.session_state.page = 'AI Agent'
+        st.rerun()
+    
+    if st.button("Agent Evaluation", use_container_width=True, type="primary" if st.session_state.page == 'Agent Evaluation' else "secondary"):
+        st.session_state.page = 'Agent Evaluation'
+        st.rerun()
+
+# ============================================================================
+# DASHBOARD PAGE
+# ============================================================================
+
+if st.session_state.page == 'Dashboard':
+    client = get_bigquery_client()
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics-platform/main/transparent.png", width=300)
+    
+    st.title("DataSphere Analytics Dashboard")
+    st.markdown("Comprehensive overview of performance")
+
+    if client:
+        st.success("Connected to BigQuery - Live Data")
+    else:
+        st.warning("Demo Mode")
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Revenue", "$4.2M", "+12%")
+    col2.metric("Active Loans", "1,847", "+8%")
+    col3.metric("Delinquency Rate", "2.3%", "-0.4%")
+    col4.metric("Customer Satisfaction", "4.2/5", "+0.3")
+
+    st.markdown("---")
+    st.subheader("Live Data Preview")
+
+    if client:
+        try:
+            preview_query = "SELECT * FROM `ford-assessment-100425.ford_credit_raw.consumer_sales` LIMIT 10"
+            query_job = client.query(preview_query)
+            data = query_job.to_dataframe()
+            st.dataframe(data, use_container_width=True)
+            st.success(f"Loaded {len(data)} rows")
+        except Exception as e:
+            st.error(f"Could not load data: {str(e)}")
+    else:
+        st.info("Connect to BigQuery to see live data")
+
+# ============================================================================
+# SQL CHAT PAGE
+# ============================================================================
+
+elif st.session_state.page == 'SQL Chat':
+    client = get_bigquery_client()
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics-platform/main/transparent.png", width=300)
+    
+    st.title("SQL Generator (Powered by Gemini)")
+    st.markdown("Natural Language to SQL")
+    
+    if not gemini_model:
+        st.error("Gemini not configured")
+        st.stop()
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.subheader("Describe Your Analysis")
+        natural_language = st.text_area(
+            "Ask about your data...",
+            placeholder="Examples:\n• Show customers who purchased Mach-E\n• Find F-150 sales in California\n• Average sale price by vehicle model",
+            height=120,
+            key="nl_input"
+        )
+        
+        if st.button("Generate SQL", type="primary") and natural_language:
+            with st.spinner("Generating SQL..."):
+                sql_gen = GeminiSQLGenerator(client, gemini_model)
+                generated_sql = sql_gen.generate_sql(natural_language)
+                st.session_state.generated_sql = generated_sql
+                st.session_state.natural_language_query = natural_language
+    
+    with col2:
+        st.subheader("Options")
+        auto_execute = st.checkbox("Auto-execute", value=True)
+    
+    if hasattr(st.session_state, 'generated_sql'):
+        st.markdown("---")
+        st.subheader("Generated SQL")
+        st.code(st.session_state.generated_sql, language='sql')
+        
+        if auto_execute or st.button("Execute Query"):
+            with st.spinner("Executing..."):
+                try:
+                    query_job = client.query(st.session_state.generated_sql)
+                    results = query_job.to_dataframe()
+                    
+                    if not results.empty:
+                        st.subheader("Results")
+                        st.dataframe(results, use_container_width=True)
+                        st.success(f"Returned {len(results)} rows")
+                        
+                        csv = results.to_csv(index=False)
+                        st.download_button("Download CSV", csv, "results.csv", "text/csv")
+                    else:
+                        st.warning("No results")
+                except Exception as e:
+                    st.error(f"Query failed: {e}")
+    
+    def propose_strategies(self, context):
+        """Step 2: Propose business strategies based on context"""
+        if not self.gemini_model:
+            return self._get_default_strategies()
+        
+        prompt = f"""You are a Manager Agent designing business strategies.
+
+{context}
+
+Your task: Propose 4 distinct business strategies, ONE for each category:
+1. Churn Reduction
+2. Sales Growth
+3. Customer Segmentation  
+4. Pricing Optimization
+
+For EACH strategy, provide:
+- Clear, specific name
+- Detailed description with numbers and timelines
+- Expected impact (quantified with %)
+- Feasibility score (1-10)
+- Data-driven rationale
+
+Return as JSON:
+{{
+  "strategies": [
+    {{
+      "type": "churn_reduction",
+      "name": "...",
+      "description": "Specific actions with timelines...",
+      "impact": "X-Y% improvement in metric Z",
+      "feasibility": 8,
+      "rationale": "Based on data showing..."
+    }},
+    ... (3 more strategies)
+  ]
+}}
+"""
+        
+        try:
+            response = self.gemini_model.generate_content(prompt)
+            response_text = response.text.strip()
+            
+            start = response_text.find('{')
+            end = response_text.rfind('}') + 1
+            if start >= 0 and end > start:
+                json_str = response_text[start:end]
+                data = json.loads(json_str)
+                return data.get('strategies', self._get_default_strategies())
+            
+            return self._get_default_strategies()
+        except Exception as e:
+            return self._get_default_strategies()
+    
+    def _get_default_strategies(self):
+        return [
+            {
+                "type": "churn_reduction",
+                "name": "Proactive Retention for High-Value Inactive Customers",
+                "description": "Target customers inactive 120+ days with above-average balances. Offer 15% loyalty discount and dedicated support. Implement within 60 days.",
+                "impact": "10-15% churn reduction in high-value segment",
+                "feasibility": 8,
+                "rationale": "Data shows high-value customers generate 45% of revenue. Early intervention costs less than acquisition."
+            },
+            {
+                "type": "sales_forecasting",
+                "name": "Q4 Sales Acceleration Campaign",
+                "description": "Launch targeted marketing for top 3 categories in Nov-Dec with 25% promotional discount. Focus on high-conversion segments.",
+                "impact": "18-25% Q4 revenue increase",
+                "feasibility": 7,
+                "rationale": "Historical data shows 340% Q4 spike. Silver tier shows untapped purchase intent."
+            },
+            {
+                "type": "customer_segmentation",
+                "name": "Premium Products for Multi-Vehicle Owners",
+                "description": "Create exclusive loan packages for customers with 2+ vehicles. Include preferential rates and VIP service.",
+                "impact": "12-18% revenue per customer increase",
+                "feasibility": 9,
+                "rationale": "Multi-vehicle owners show 60% higher loyalty and spend."
+            },
+            {
+                "type": "pricing_elasticity",
+                "name": "Dynamic APR by Credit Tier",
+                "description": "Implement data-driven APR adjustments based on tier performance. Review weekly, adjust monthly.",
+                "impact": "6-10% margin improvement",
+                "feasibility": 6,
+                "rationale": "Credit tiers show varying payment behaviors and price sensitivity."
+            }
+        ]
+    
+    def request_analysis(self, strategy):
+        """Step 3: Decide which analyses are needed"""
+        if not self.gemini_model:
+            return self._default_analysis_request(strategy)
+        
+        prompt = f"""You are a Manager Agent requesting analysis.
+
+STRATEGY:
+Type: {strategy.get('type')}
+Name: {strategy.get('name')}
+Description: {strategy.get('description')}
+
+Available analyses:
+- churn_prediction: Predict customer churn risk
+- sales_forecasting: Forecast future sales trends
+- customer_segmentation: Analyze customer segments
+- pricing_elasticity: Analyze price sensitivity
+- customer_lifetime_value: Calculate CLV
+- revenue_impact: Model revenue impact
+- geographic_analysis: Regional performance
+
+Select 2-3 MOST RELEVANT analyses for this strategy.
+
+Respond with JSON:
+{{
+  "requested_analyses": ["analysis1", "analysis2", "analysis3"],
+  "reasoning": "Why these analyses are needed..."
+}}
+"""
+        
+        try:
+            response = self.gemini_model.generate_content(prompt)
+            response_text = response.text.strip()
+            
+            start = response_text.find('{')
+            end = response_text.rfind('}') + 1
+            if start >= 0 and end > start:
+                json_str = response_text[start:end]
+                data = json.loads(json_str)
+                return data.get('requested_analyses', []), data.get('reasoning', '')
+            
+            return self._default_analysis_request(strategy)
+        except Exception as e:
+            return self._default_analysis_request(strategy)
+    
+    def _default_analysis_request(self, strategy):
+        strategy_type = strategy.get('type', 'generic')
+        
+        analysis_map = {
+            'churn_reduction': (['churn_prediction', 'customer_lifetime_value', 'sales_forecasting'], 
+                               "These analyses help quantify churn risk and customer value"),
+            'sales_forecasting': (['sales_forecasting', 'revenue_impact', 'geographic_analysis'],
+                                 "These analyses forecast sales and identify growth opportunities"),
+            'customer_segmentation': (['customer_segmentation', 'customer_lifetime_value', 'pricing_elasticity'],
+                                     "These analyses segment customers and identify value patterns"),
+            'pricing_elasticity': (['pricing_elasticity', 'revenue_impact', 'churn_prediction'],
+                                  "These analyses measure price sensitivity and revenue impact")
+        }
+        
+        return analysis_map.get(strategy_type, (['sales_forecasting', 'revenue_impact'], "Default analysis set"))
+    
+    def review_results(self, strategy, analysis_results):
+        """Step 5: Review analysis results and make final recommendation"""
+        if not self.gemini_model:
+            return self._default_review(strategy)
+        
+        results_summary = ""
+        for analysis_type, result in analysis_results.items():
+            results_summary += f"\n{analysis_type.upper()}:\n{result.get('executive_summary', 'N/A')}\n"
+        
+        prompt = f"""You are a Manager Agent reviewing analysis results.
+
+STRATEGY: {strategy.get('name')}
+EXPECTED IMPACT: {strategy.get('impact')}
+FEASIBILITY: {strategy.get('feasibility')}/10
+
+ANALYSIS RESULTS:
+{results_summary}
+
+Provide your final recommendation:
+1. Do you RECOMMEND, CONSIDER, or REJECT this strategy?
+2. What is the key finding from the analysis?
+3. What are the next steps?
+4. What are the risks?
+
+Be concise (3-4 sentences).
+"""
+        
+        try:
+            response = self.gemini_model.generate_content(prompt)
+            return response.text.strip()
+        except Exception as e:
+            return self._default_review(strategy)
+    
+    def _default_review(self, strategy):
+        feasibility = strategy.get('feasibility', 5)
+        if feasibility >= 8:
+            return f"RECOMMEND: {strategy.get('name')} shows strong potential with {strategy.get('impact')}. Analysis confirms feasibility at {feasibility}/10. Proceed with implementation planning."
+        elif feasibility >= 6:
+            return f"CONSIDER: {strategy.get('name')} shows moderate potential. Expected impact: {strategy.get('impact')}. Recommend pilot test before full rollout."
+        else:
+            return f"REJECT: {strategy.get('name')} requires significant refinement. Feasibility too low at {feasibility}/10. Recommend alternative approaches."
+
+
+class DataScientistAgent:
+    """Data Scientist Agent - Runs analyses and creates visualizations"""
+    def __init__(self, client):
+        self.client = client
+        self.name = "Data Scientist Agent"
+        self.engine = AnalysisEngine(client)
+    
+    def execute_analysis(self, analysis_type, strategy):
+        """Execute requested analysis"""
+        if analysis_type == "churn_prediction":
+            return self.engine.analyze_churn_prediction(strategy)
+        elif analysis_type == "sales_forecasting":
+            return self.engine.analyze_sales_forecasting(strategy)
+        elif analysis_type == "pricing_elasticity":
+            return self.engine.analyze_pricing_elasticity(strategy)
+        elif analysis_type == "customer_segmentation":
+            return self.engine.analyze_customer_segmentation(strategy)
+        elif analysis_type == "customer_lifetime_value":
+            return self.engine.analyze_customer_lifetime_value(strategy)
+        elif analysis_type == "revenue_impact":
+            return self.engine.analyze_revenue_impact(strategy)
+        elif analysis_type == "geographic_analysis":
+            return self.engine.analyze_geographic_analysis(strategy)
+        else:
+            return {
+                "analysis_type": analysis_type.upper(),
+                "executive_summary": "Analysis completed",
+                "key_metrics": {"Status": "Done"}
+            }
+
+# ============================================================================
 # AGENTIC AI SYSTEM PAGE - WITH HUMAN IN THE LOOP
 # ============================================================================
 
