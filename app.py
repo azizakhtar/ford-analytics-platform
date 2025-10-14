@@ -751,8 +751,14 @@ class AnalysisEngine:
             
             if len(df) < 6:
                 return self._mock_sales_forecast(strategy)
+    
+    def analyze_churn_prediction(self, strategy):
             
             df['month'] = pd.to_datetime(df['month'])
+            df = df.sort_values('month')
+            
+            X = np.arange(len(df)).reshape(-1, 1)
+            y_sales = df['monthly_sales'].values
             df = df.sort_values('month')
             
             X = np.arange(len(df)).reshape(-1, 1)
@@ -804,6 +810,8 @@ class AnalysisEngine:
             }
         except Exception as e:
             return self._mock_sales_forecast(strategy)
+    
+    def analyze_churn_prediction(self, strategy):
     
     def analyze_churn_prediction(self, strategy):
         try:
