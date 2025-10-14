@@ -709,7 +709,135 @@ Provide next step
             return f"DO NOT RECOMMEND: Strategy requires refinement. Feasibility: {feasibility}/10."
 
 # ============================================================================
-# STRATEGY AGENT
+# MANAGER AGENT - Proposes strategies and communicates with user
+# ============================================================================
+
+class ManagerAgent:
+    """Manager Agent: Designs business strategies and communicates with stakeholders"""
+    
+    def __init__(self, gemini_model):
+        self.gemini_model = gemini_model
+        self.name = "Manager Agent"
+    
+    def propose_strategies(self, data_insights):
+        """Propose strategies based on data insights"""
+        return {
+            "agent": self.name,
+            "action": "strategy_proposal",
+            "message": f"Based on my analysis of the data, I've identified 4 strategic opportunities. Let me walk you through each one:",
+            "strategies_count": 4
+        }
+    
+    def explain_strategy(self, strategy):
+        """Explain a strategy to the user"""
+        return {
+            "agent": self.name,
+            "action": "strategy_explanation",
+            "strategy_name": strategy.get('name'),
+            "message": f"**Strategy: {strategy.get('name')}**\n\n"
+                      f"**Type:** {strategy.get('type', 'unknown').replace('_', ' ').title()}\n\n"
+                      f"**Description:** {strategy.get('description')}\n\n"
+                      f"**Expected Impact:** {strategy.get('impact')}\n\n"
+                      f"**Feasibility Score:** {strategy.get('feasibility')}/10\n\n"
+                      f"**Why this strategy?** {strategy.get('rationale')}\n\n"
+                      f"Should I ask the Data Scientist Agent to run detailed analysis on this strategy?"
+        }
+    
+    def request_approval(self, selected_count):
+        """Request approval to proceed"""
+        return {
+            "agent": self.name,
+            "action": "approval_request",
+            "message": f"You've selected {selected_count} strategies for testing. Shall I coordinate with the Data Scientist Agent to run comprehensive analysis on these strategies?"
+        }
+    
+    def delegate_to_analyst(self, strategy):
+        """Delegate work to Data Scientist Agent"""
+        return {
+            "agent": self.name,
+            "action": "delegation",
+            "message": f"📊 **Delegating to Data Scientist Agent**\n\n"
+                      f"I'm assigning the '{strategy.get('name')}' strategy to our Data Scientist Agent for comprehensive analysis. "
+                      f"They will run multiple analytical models and provide detailed findings."
+        }
+
+# ============================================================================
+# DATA SCIENTIST AGENT - Runs analyses and reports findings
+# ============================================================================
+
+class DataScientistAgent:
+    """Data Scientist Agent: Executes analyses and reports findings"""
+    
+    def __init__(self):
+        self.name = "Data Scientist Agent"
+    
+    def acknowledge_assignment(self, strategy):
+        """Acknowledge receiving assignment"""
+        return {
+            "agent": self.name,
+            "action": "acknowledgment",
+            "message": f"📈 **Assignment Received**\n\n"
+                      f"I've received the '{strategy.get('name')}' strategy from the Manager. "
+                      f"Let me determine which analyses are most relevant for this strategy type."
+        }
+    
+    def decide_analyses(self, strategy):
+        """Decide which analyses to run"""
+        strategy_type = strategy.get('type', 'generic')
+        
+        analysis_map = {
+            'churn_reduction': ['churn_prediction', 'customer_lifetime_value', 'sales_forecasting'],
+            'sales_forecasting': ['sales_forecasting', 'revenue_impact', 'geographic_analysis'],
+            'customer_segmentation': ['segmentation_analysis', 'customer_lifetime_value', 'pricing_elasticity'],
+            'pricing_elasticity': ['pricing_elasticity', 'revenue_impact', 'churn_prediction']
+        }
+        
+        analyses = analysis_map.get(strategy_type, ['sales_forecasting', 'revenue_impact'])
+        
+        return {
+            "agent": self.name,
+            "action": "analysis_plan",
+            "analyses": analyses,
+            "message": f"**Analysis Plan**\n\n"
+                      f"For this {strategy_type.replace('_', ' ')} strategy, I recommend running {len(analyses)} analyses:\n"
+                      f"{chr(10).join([f'• {a.replace('_', ' ').title()}' for a in analyses])}\n\n"
+                      f"Beginning execution now..."
+        }, analyses
+    
+    def report_analysis_start(self, analysis_type, index, total):
+        """Report starting an analysis"""
+        return {
+            "agent": self.name,
+            "action": "analysis_progress",
+            "message": f"🔬 **Analysis {index}/{total}**: Running {analysis_type.replace('_', ' ').title()}..."
+        }
+    
+    def report_analysis_complete(self, analysis_type, result):
+        """Report analysis completion"""
+        summary = result.get('executive_summary', 'Analysis complete')
+        return {
+            "agent": self.name,
+            "action": "analysis_result",
+            "analysis_type": analysis_type,
+            "message": f"✅ **{result.get('analysis_type', analysis_type.upper())} - Complete**\n\n"
+                      f"{summary}"
+        }
+    
+    def provide_final_summary(self, strategy, all_results):
+        """Provide final summary of all analyses"""
+        return {
+            "agent": self.name,
+            "action": "final_summary",
+            "message": f"📋 **Analysis Complete for '{strategy.get('name')}'**\n\n"
+                      f"I've completed {len(all_results)} analyses. The results show:\n"
+                      f"• All requested analyses executed successfully\n"
+                      f"• Visualizations generated for key findings\n"
+                      f"• Ready for executive summary generation\n\n"
+                      f"Reporting back to Manager Agent..."
+        }
+
+# ============================================================================
+# LEGACY STRATEGY AGENT (kept for compatibility)
 # ============================================================================
 
 class StrategyAgent:
@@ -1209,7 +1337,7 @@ elif st.session_state.page == 'SQL Chat':
                     st.error(f"Query failed: {e}")
 
 # ============================================================================
-# AGENTIC AI SYSTEM PAGE
+# AGENTIC AI SYSTEM PAGE - HUMAN-IN-THE-LOOP
 # ============================================================================
 
 elif st.session_state.page == 'AI Agent':
@@ -1219,22 +1347,22 @@ elif st.session_state.page == 'AI Agent':
     with col2:
         st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics-platform/main/transparent.png", width=300)
     
-    st.title("Agentic AI Strategy Testing")
-    st.markdown("**Gemini analyzes | Generates strategies | Agent tests | Gemini summarizes**")
+    st.title("🤖 Human-in-the-Loop Agentic AI System")
+    st.markdown("**Manager Agent** proposes strategies → **You** approve → **Data Scientist Agent** executes analysis")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.subheader("Data Analyzer")
-        st.markdown("Gemini fetches insights from BigQuery")
+        st.subheader("👔 Manager Agent")
+        st.markdown("Analyzes data & proposes strategies")
     
     with col2:
-        st.subheader("Strategy Generator")
-        st.markdown("Creates 4 data-driven strategies")
+        st.subheader("👤 You Decide")
+        st.markdown("Review & approve strategies")
     
     with col3:
-        st.subheader("Agentic Analyst")
-        st.markdown("Runs models and visualizations")
+        st.subheader("📊 Data Scientist Agent")
+        st.markdown("Runs analysis & generates insights")
     
     st.markdown("---")
     
@@ -1252,20 +1380,97 @@ elif st.session_state.page == 'AI Agent':
         st.session_state.test_results = {}
     if 'selected_strategies' not in st.session_state:
         st.session_state.selected_strategies = []
+    if 'agent_messages' not in st.session_state:
+        st.session_state.agent_messages = []
+    if 'manager_agent' not in st.session_state:
+        st.session_state.manager_agent = ManagerAgent(gemini_model)
+    if 'data_scientist_agent' not in st.session_state:
+        st.session_state.data_scientist_agent = DataScientistAgent()
     
-    if st.button("Generate Strategies with Gemini", type="primary", use_container_width=True):
-        with st.spinner("Analyzing data..."):
+    # Helper function to display agent messages
+    def display_agent_message(message):
+        """Display a message from an agent in a styled container"""
+        agent_name = message.get('agent', 'System')
+        msg_content = message.get('message', '')
+        action = message.get('action', 'info')
+        
+        if agent_name == "Manager Agent":
+            avatar = "👔"
+            color = "#1f77b4"
+        elif agent_name == "Data Scientist Agent":
+            avatar = "📊"
+            color = "#2ca02c"
+        elif agent_name == "You":
+            avatar = "👤"
+            color = "#ff7f0e"
+        else:
+            avatar = "💬"
+            color = "#7f7f7f"
+        
+        st.markdown(f"""
+        <div style="background-color: {color}15; padding: 15px; border-radius: 10px; 
+                    border-left: 4px solid {color}; margin: 10px 0;">
+            <div style="font-weight: bold; color: {color}; margin-bottom: 8px;">
+                {avatar} {agent_name}
+            </div>
+            <div style="color: #333; line-height: 1.6;">
+                {msg_content}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    if st.button("🚀 Start Agentic Workflow", type="primary", use_container_width=True):
+        # Clear previous messages
+        st.session_state.agent_messages = []
+        
+        with st.spinner("Manager Agent analyzing data..."):
             manager = GeminiStrategyManager(client, gemini_model)
             insights = manager.get_data_insights()
+            
+            # Manager Agent introduces itself
+            intro_msg = {
+                "agent": "Manager Agent",
+                "action": "introduction",
+                "message": "👔 **Manager Agent Initialized**\n\nHello! I'm analyzing your business data to identify strategic opportunities. Let me gather insights from BigQuery..."
+            }
+            st.session_state.agent_messages.append(intro_msg)
+            
+            # Manager Agent analyzes data
+            analysis_msg = {
+                "agent": "Manager Agent",
+                "action": "data_analysis",
+                "message": f"**Data Analysis Complete**\n\nI've analyzed your customer data and identified key patterns:\n\n{insights[:500]}...\n\nBased on these insights, I'm now generating strategic recommendations."
+            }
+            st.session_state.agent_messages.append(analysis_msg)
+            
             strategies = manager.generate_strategies(insights)
             st.session_state.strategies_generated = strategies
-            st.success(f"Generated {len(strategies)} strategies!")
+            
+            # Manager Agent proposes strategies
+            proposal_msg = st.session_state.manager_agent.propose_strategies(insights)
+            st.session_state.agent_messages.append(proposal_msg)
+            
+            st.success(f"Manager Agent has proposed {len(strategies)} strategies!")
             st.rerun()
     
     if st.session_state.strategies_generated:
         st.markdown("---")
+        
+        # Display Agent Conversation
+        if st.session_state.agent_messages:
+            with st.expander("🤖 Agent Communication Log", expanded=True):
+                for message in st.session_state.agent_messages:
+                    display_agent_message(message)
+        
+        st.markdown("---")
         st.subheader("Generated Strategies")
         st.markdown("**Select strategies to test:**")
+        
+        # Show Manager Agent explaining each strategy
+        if not any(msg.get('action') == 'strategy_explanation' for msg in st.session_state.agent_messages):
+            for strategy in st.session_state.strategies_generated:
+                explanation = st.session_state.manager_agent.explain_strategy(strategy)
+                st.session_state.agent_messages.append(explanation)
         
         cols = st.columns(4)
         
@@ -1324,7 +1529,27 @@ elif st.session_state.page == 'AI Agent':
             col1, col2, col3 = st.columns([2, 1, 1])
             
             with col1:
-                if st.button(f"Test Selected ({len(st.session_state.selected_strategies)}/4)", type="primary", use_container_width=True):
+                if st.button(f"✅ Approve Testing ({len(st.session_state.selected_strategies)}/4)", type="primary", use_container_width=True):
+                    # Manager requests approval
+                    approval_msg = st.session_state.manager_agent.request_approval(len(st.session_state.selected_strategies))
+                    st.session_state.agent_messages.append(approval_msg)
+                    
+                    # User approves
+                    user_msg = {
+                        "agent": "You",
+                        "action": "approval",
+                        "message": f"✅ **Approved**\n\nPlease proceed with testing the {len(st.session_state.selected_strategies)} selected strategies."
+                    }
+                    st.session_state.agent_messages.append(user_msg)
+                    
+                    # Manager acknowledges
+                    proceed_msg = {
+                        "agent": "Manager Agent",
+                        "action": "proceed",
+                        "message": "Perfect! I'm coordinating with the Data Scientist Agent now. We'll run comprehensive analysis on each approved strategy."
+                    }
+                    st.session_state.agent_messages.append(proceed_msg)
+                    
                     st.session_state.batch_testing = True
                     st.rerun()
             
@@ -1340,7 +1565,15 @@ elif st.session_state.page == 'AI Agent':
     
     if st.session_state.get('batch_testing', False):
         st.markdown("---")
-        st.header("Testing Strategies")
+        st.header("🤖 Agents at Work")
+        
+        # Show real-time agent messages
+        message_container = st.container()
+        with message_container:
+            for message in st.session_state.agent_messages:
+                display_agent_message(message)
+        
+        st.markdown("---")
         
         selected_objs = [s for s in st.session_state.strategies_generated if s.get('name') in st.session_state.selected_strategies]
         
@@ -1356,10 +1589,24 @@ elif st.session_state.page == 'AI Agent':
                 
                 progress = (idx) / len(selected_objs)
                 progress_bar.progress(progress)
-                status_text.text(f"Testing {idx + 1}/{len(selected_objs)}: {strategy_name[:50]}...")
+                status_text.text(f"Processing {idx + 1}/{len(selected_objs)}: {strategy_name[:50]}...")
                 
                 if strategy_name not in st.session_state.test_results:
-                    required_analyses = StrategyAgent.decide_analyses(strategy)
+                    # Manager delegates to Data Scientist
+                    delegation_msg = st.session_state.manager_agent.delegate_to_analyst(strategy)
+                    st.session_state.agent_messages.append(delegation_msg)
+                    display_agent_message(delegation_msg)
+                    
+                    # Data Scientist acknowledges
+                    ack_msg = st.session_state.data_scientist_agent.acknowledge_assignment(strategy)
+                    st.session_state.agent_messages.append(ack_msg)
+                    display_agent_message(ack_msg)
+                    
+                    # Data Scientist decides on analyses
+                    plan_msg, required_analyses = st.session_state.data_scientist_agent.decide_analyses(strategy)
+                    st.session_state.agent_messages.append(plan_msg)
+                    display_agent_message(plan_msg)
+                    
                     engine = AnalysisEngine(client)
                     
                     test_results = {
@@ -1369,7 +1616,16 @@ elif st.session_state.page == 'AI Agent':
                         "confidence_score": strategy.get('feasibility', 7) * 10
                     }
                     
-                    for analysis_type in required_analyses:
+                    # Run each analysis with Data Scientist reporting
+                    for analysis_idx, analysis_type in enumerate(required_analyses):
+                        # Report starting analysis
+                        start_msg = st.session_state.data_scientist_agent.report_analysis_start(
+                            analysis_type, analysis_idx + 1, len(required_analyses)
+                        )
+                        st.session_state.agent_messages.append(start_msg)
+                        display_agent_message(start_msg)
+                        
+                        # Run the actual analysis
                         if analysis_type == "churn_prediction":
                             result = engine.analyze_churn_prediction(strategy)
                         elif analysis_type == "sales_forecasting":
@@ -1388,10 +1644,33 @@ elif st.session_state.page == 'AI Agent':
                             result = {"analysis_type": analysis_type.upper(), "executive_summary": "Complete", "key_metrics": {"Status": "Done"}}
                         
                         test_results["analysis_results"][analysis_type] = result
+                        
+                        # Report completion
+                        complete_msg = st.session_state.data_scientist_agent.report_analysis_complete(
+                            analysis_type, result
+                        )
+                        st.session_state.agent_messages.append(complete_msg)
+                        display_agent_message(complete_msg)
                     
+                    # Data Scientist provides final summary
+                    final_msg = st.session_state.data_scientist_agent.provide_final_summary(
+                        strategy, test_results["analysis_results"]
+                    )
+                    st.session_state.agent_messages.append(final_msg)
+                    display_agent_message(final_msg)
+                    
+                    # Manager Agent generates executive summary with Gemini
                     summarizer = GeminiSummarizer(gemini_model)
                     summary = summarizer.summarize_analysis(strategy, test_results["analysis_results"])
                     test_results["executive_summary"] = summary
+                    
+                    manager_summary = {
+                        "agent": "Manager Agent",
+                        "action": "executive_summary",
+                        "message": f"📋 **Executive Summary for '{strategy_name}'**\n\n{summary}"
+                    }
+                    st.session_state.agent_messages.append(manager_summary)
+                    display_agent_message(manager_summary)
                     
                     feasibility = strategy.get('feasibility', 5)
                     if feasibility >= 8:
@@ -1406,14 +1685,24 @@ elif st.session_state.page == 'AI Agent':
             progress_bar.progress(1.0)
             status_text.text(f"Completed {len(selected_objs)} strategies!")
             st.session_state.batch_testing = False
+            
+            # Final message from Manager
+            final_summary = {
+                "agent": "Manager Agent",
+                "action": "completion",
+                "message": f"✅ **All Analyses Complete**\n\nI've worked with the Data Scientist Agent to complete analysis on {len(selected_objs)} strategies. All results are ready for your review below."
+            }
+            st.session_state.agent_messages.append(final_summary)
+            display_agent_message(final_summary)
+            
             st.success(f"All strategies tested!")
             
-            if st.button("View Results", type="primary", use_container_width=True):
+            if st.button("View Detailed Results", type="primary", use_container_width=True):
                 st.rerun()
     
     if st.session_state.test_results and not st.session_state.get('batch_testing', False):
         st.markdown("---")
-        st.header("Test Results")
+        st.header("📊 Test Results")
         
         st.subheader("Overview")
         cols = st.columns(len(st.session_state.test_results))
@@ -1480,27 +1769,55 @@ elif st.session_state.page == 'AI Agent':
                 st.session_state.strategies_generated = []
                 st.session_state.selected_strategies = []
                 st.session_state.test_results = {}
+                st.session_state.agent_messages = []
                 st.rerun()
     
     elif not st.session_state.strategies_generated:
-        st.info("Click 'Generate Strategies' to start")
+        st.info("👆 Click 'Start Agentic Workflow' above to begin")
         
         st.markdown("---")
-        st.subheader("How It Works")
+        st.subheader("🤖 Human-in-the-Loop Agentic System")
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
+        
         with col1:
-            st.markdown("### 1. Generate")
-            st.write("Gemini analyzes BigQuery data")
+            st.markdown("### 1️⃣ Manager Agent")
+            st.write("📋 Analyzes data from BigQuery")
+            st.write("💡 Generates strategic recommendations")
+            st.write("🗣️ Explains rationale to you")
+        
         with col2:
-            st.markdown("### 2. Agent Decides")
-            st.write("Selects relevant analyses")
+            st.markdown("### 2️⃣ Your Review")
+            st.write("✅ Review proposed strategies")
+            st.write("🎯 Select strategies to test")
+            st.write("👍 Approve for analysis")
+        
         with col3:
-            st.markdown("### 3. Execute")
-            st.write("Runs tests with visualizations")
+            st.markdown("### 3️⃣ Data Scientist")
+            st.write("📊 Receives assignments")
+            st.write("🔬 Runs multiple analyses")
+            st.write("📈 Generates visualizations")
+        
+        with col4:
+            st.markdown("### 4️⃣ Results")
+            st.write("📋 Executive summaries")
+            st.write("📊 Interactive charts")
+            st.write("✅ Recommendations")
+        
+        st.markdown("---")
+        
+        st.info("""
+        **Key Features:**
+        - 👔 **Manager Agent** uses Gemini to understand your business context
+        - 📊 **Data Scientist Agent** autonomously selects and runs relevant analyses
+        - 🤝 **Human-in-the-Loop**: You approve strategies before testing begins
+        - 💬 **Real-time Communication**: Watch agents work and communicate
+        - 📈 **Comprehensive Analysis**: Multiple models with visualizations
+        - 🎯 **Actionable Insights**: Clear recommendations based on data
+        """)
 
 # ============================================================================
-# AGENT EVALUATION PAGE
+# AGENT EVALUATION PAGE (unchanged)
 # ============================================================================
 
 elif st.session_state.page == 'Agent Evaluation':
