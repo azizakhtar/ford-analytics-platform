@@ -531,44 +531,26 @@ class GeminiSQLGenerator:
         try:
             schema = self.get_database_schema()
             
-            prompt = f"""You are a SQL expert. Generate a valid BigQuery SQL query.
+            prompt = f"""You are a BigQuery SQL expert. Generate a valid SQL query for this request.
 
+DATABASE SCHEMA:
 {schema}
 
 USER REQUEST: {natural_language}
 
-CRITICAL RULES FOR BIGQUERY:
-1. Return ONLY the SQL query, no explanation
-2. Use backticks for table names: `ford-assessment-100425.ford_credit_raw.table_name`
-3. Always add LIMIT clause (default 100)
+REQUIREMENTS:
+1. Return ONLY the SQL query with no explanation
+2. Table names must use backticks: `ford-assessment-100425.ford_credit_raw.table_name`
+3. Add LIMIT 100 at the end
+4. For timestamp comparisons, convert time periods to days:
+   - 6 months = 180 days
+   - 1 year = 365 days  
+   - 3 months = 90 days
+5. Use: WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL [X] DAY)
+6. Pay attention to words like "each", "per", "by" - these indicate GROUP BY is needed
+7. If asking for aggregate without grouping words, return single result
 
-4. GROUPING - recognize these phrases that require GROUP BY:
-   - "by [column]" → GROUP BY that column
-   - "for each [column]" → GROUP BY that column
-   - "per [column]" → GROUP BY that column
-   - "breakdown of/by [column]" → GROUP BY that column
-   - "each [column]" → GROUP BY that column
-   
-   Examples:
-   - "average price by vehicle" → SELECT vehicle_model, AVG(sale_price) GROUP BY vehicle_model
-   - "average price for each vehicle" → SELECT vehicle_model, AVG(sale_price) GROUP BY vehicle_model
-   - "average price per vehicle type" → SELECT vehicle_model, AVG(sale_price) GROUP BY vehicle_model
-   - "sales for each month" → SELECT DATE_TRUNC(...), COUNT(*) GROUP BY month
-   - Just "average price" with NO "by/for each/per" → SELECT AVG(sale_price) (no GROUP BY)
-
-5. TIMESTAMP DATE COMPARISONS:
-   For TIMESTAMP columns like sale_timestamp, use THESE formats:
-   
-   - Last 6 months: WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 DAY)
-   - Last 1 year: WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 365 DAY)
-   - Last 30 days: WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-   - Last 90 days: WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
-   
-   NEVER use INTERVAL X MONTH or INTERVAL X YEAR with TIMESTAMP_SUB
-   ALWAYS convert months to days (1 month = 30 days, 6 months = 180 days, 1 year = 365 days)
-
-Generate the SQL query now:
-"""
+Generate the query:"""
             
             response = self.gemini_model.generate_content(prompt)
             sql = response.text.strip()
@@ -1360,12 +1342,29 @@ elif st.session_state.page == 'SQL Chat':
             key="nl_input"
         )
         
-        if st.button("Generate SQL", type="primary") and natural_language:
-            with st.spinner("Generating SQL..."):
-                sql_gen = GeminiSQLGenerator(client, gemini_model)
-                generated_sql = sql_gen.generate_sql(natural_language)
-                st.session_state.generated_sql = generated_sql
-                st.session_state.natural_language_query = natural_language
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("Generate SQL", type="primary", use_container_width=True) and natural_language:
+                # Clear previous results
+                if 'generated_sql' in st.session_state:
+                    del st.session_state.generated_sql
+                if 'natural_language_query' in st.session_state:
+                    del st.session_state.natural_language_query
+                    
+                with st.spinner("Generating SQL..."):
+                    sql_gen = GeminiSQLGenerator(client, gemini_model)
+                    generated_sql = sql_gen.generate_sql(natural_language)
+                    st.session_state.generated_sql = generated_sql
+                    st.session_state.natural_language_query = natural_language
+                    st.rerun()
+        
+        with col_b:
+            if st.button("Clear Query", use_container_width=True):
+                if 'generated_sql' in st.session_state:
+                    del st.session_state.generated_sql
+                if 'natural_language_query' in st.session_state:
+                    del st.session_state.natural_language_query
+                st.rerun()
     
     with col2:
         st.subheader("Options")
