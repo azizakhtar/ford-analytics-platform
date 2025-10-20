@@ -537,18 +537,31 @@ class GeminiSQLGenerator:
 
 USER REQUEST: {natural_language}
 
-CRITICAL RULES:
+CRITICAL RULES FOR BIGQUERY:
 1. Return ONLY the SQL query, no explanation
 2. Use backticks for table names: `ford-assessment-100425.ford_credit_raw.table_name`
 3. Always add LIMIT clause (default 100)
-4. For TIMESTAMP columns (like sale_timestamp), use TIMESTAMP_SUB and CURRENT_TIMESTAMP():
-   - Example: WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 6 MONTH)
-5. For DATE columns, use DATE_SUB and CURRENT_DATE()
-6. Never mix DATE and TIMESTAMP in comparisons without proper casting
-7. Common timestamp comparisons:
-   - Last 6 months: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 6 MONTH)
-   - Last year: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 YEAR)
-   - Last 30 days: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+
+4. TIMESTAMP DATE COMPARISONS (VERY IMPORTANT):
+   For TIMESTAMP columns like sale_timestamp, use THESE formats:
+   
+   - Last 6 months: WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 DAY)
+   - Last 1 year: WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 365 DAY)
+   - Last 30 days: WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+   - Last 90 days: WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
+   
+   NEVER use INTERVAL X MONTH or INTERVAL X YEAR with TIMESTAMP_SUB
+   ALWAYS convert months to days (1 month = 30 days, 6 months = 180 days, 1 year = 365 days)
+   
+5. For DATE columns (not TIMESTAMP), you can use:
+   - DATE_SUB(CURRENT_DATE(), INTERVAL 6 MONTH)
+   - DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR)
+
+6. Common timestamp patterns:
+   - Recent: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+   - Last quarter: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
+   - Last 6 months: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 DAY)
+   - Last year: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 365 DAY)
 
 Generate the SQL query now:
 """
@@ -1320,8 +1333,12 @@ elif st.session_state.page == 'SQL Chat':
     st.markdown("Natural Language to SQL")
     
     st.info("""
-    **Tip:** For time-based queries on timestamp columns, the generator will automatically use 
-    `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), ...)` format for proper date comparisons.
+    **Tip:** For time-based queries on timestamp columns, the generator automatically converts time periods to days:
+    - 6 months → 180 days
+    - 1 year → 365 days
+    - 3 months → 90 days
+    
+    Example: `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 DAY)` for last 6 months
     """)
     
     if not gemini_model:
@@ -1358,14 +1375,21 @@ elif st.session_state.page == 'SQL Chat':
             - Count customers by credit tier
             
             **Time-based Queries:**
-            - Sales in the last 6 months
-            - Top 10 customers by total purchases
-            - Monthly sales trends
+            - Sales in the last 180 days (6 months)
+            - Customers who purchased in last 30 days
+            - Monthly sales trends for past year
+            - Average price in last 90 days
             
             **Advanced:**
             - Customers with multiple vehicles
             - High-value transactions over $50,000
             - Sales by state and vehicle type
+            
+            **Note:** For time periods, specify in days:
+            - 1 month ≈ 30 days
+            - 3 months ≈ 90 days  
+            - 6 months ≈ 180 days
+            - 1 year ≈ 365 days
             """)
         
         with st.expander("View Database Schema"):
@@ -1397,11 +1421,45 @@ elif st.session_state.page == 'SQL Chat':
         with col2:
             if st.button("Fix Common Errors"):
                 # Auto-fix common timestamp issues
-                fixed_sql = st.session_state.generated_sql.replace(
-                    "DATE_SUB(CURRENT_DATE()",
-                    "TIMESTAMP_SUB(CURRENT_TIMESTAMP()"
+                fixed_sql = st.session_state.generated_sql
+                
+                # Fix TIMESTAMP_SUB with MONTH/YEAR intervals
+                import re
+                
+                # Replace INTERVAL X MONTH with INTERVAL (X*30) DAY for TIMESTAMP_SUB
+                fixed_sql = re.sub(
+                    r'TIMESTAMP_SUB\((.*?),\s*INTERVAL\s+(\d+)\s+MONTH\)',
+                    lambda m: f'TIMESTAMP_SUB({m.group(1)}, INTERVAL {int(m.group(2)) * 30} DAY)',
+                    fixed_sql
                 )
+                
+                # Replace INTERVAL X YEAR with INTERVAL (X*365) DAY for TIMESTAMP_SUB
+                fixed_sql = re.sub(
+                    r'TIMESTAMP_SUB\((.*?),\s*INTERVAL\s+(\d+)\s+YEAR\)',
+                    lambda m: f'TIMESTAMP_SUB({m.group(1)}, INTERVAL {int(m.group(2)) * 365} DAY)',
+                    fixed_sql
+                )
+                
+                # Fix DATE_SUB to TIMESTAMP_SUB if comparing with timestamp column
+                if 'sale_timestamp' in fixed_sql and 'DATE_SUB(CURRENT_DATE()' in fixed_sql:
+                    fixed_sql = fixed_sql.replace(
+                        "DATE_SUB(CURRENT_DATE()",
+                        "TIMESTAMP_SUB(CURRENT_TIMESTAMP()"
+                    )
+                    # Also convert MONTH/YEAR to DAY after this replacement
+                    fixed_sql = re.sub(
+                        r'TIMESTAMP_SUB\((.*?),\s*INTERVAL\s+(\d+)\s+MONTH\)',
+                        lambda m: f'TIMESTAMP_SUB({m.group(1)}, INTERVAL {int(m.group(2)) * 30} DAY)',
+                        fixed_sql
+                    )
+                    fixed_sql = re.sub(
+                        r'TIMESTAMP_SUB\((.*?),\s*INTERVAL\s+(\d+)\s+YEAR\)',
+                        lambda m: f'TIMESTAMP_SUB({m.group(1)}, INTERVAL {int(m.group(2)) * 365} DAY)',
+                        fixed_sql
+                    )
+                
                 st.session_state.generated_sql = fixed_sql
+                st.success("Fixed TIMESTAMP/DATE issues. 6 months → 180 days, 1 year → 365 days")
                 st.rerun()
         
         if auto_execute or execute_btn:
@@ -1424,15 +1482,18 @@ elif st.session_state.page == 'SQL Chat':
                     st.error(f"Query failed: {error_msg}")
                     
                     # Provide helpful suggestions
-                    if "No matching signature" in error_msg and ("TIMESTAMP" in error_msg or "DATE" in error_msg):
+                    if "TIMESTAMP_SUB does not support" in error_msg or ("No matching signature" in error_msg and ("TIMESTAMP" in error_msg or "DATE" in error_msg)):
                         st.info("""
-                        **Common Fix for TIMESTAMP/DATE errors:**
+                        **Common Fix for TIMESTAMP errors:**
                         
-                        If comparing timestamp columns, use:
-                        - `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL X MONTH)` instead of
-                        - `DATE_SUB(CURRENT_DATE(), INTERVAL X MONTH)`
+                        BigQuery TIMESTAMP_SUB only supports: DAY, HOUR, MINUTE, SECOND intervals.
                         
-                        Click the "Fix Common Errors" button above or edit the SQL manually.
+                        For time periods, convert to days:
+                        - 6 months = 180 days: `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 DAY)`
+                        - 1 year = 365 days: `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 365 DAY)`
+                        - 3 months = 90 days: `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)`
+                        
+                        Click the "Fix Common Errors" button above to auto-fix this.
                         """)
                     elif "Unrecognized name" in error_msg:
                         st.info("**Column not found.** Check the schema for correct column names.")
