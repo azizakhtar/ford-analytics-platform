@@ -788,8 +788,23 @@ class DataScientistAgent:
                       f"Let me determine which analyses are most relevant for this strategy type."
         }
     
-    def decide_analyses(self, strategy):
+    def decide_analyses(self, strategy, force_analyses=None, max_analyses=3):
         """Decide which analyses to run"""
+        
+        # If user forces specific analyses, use those
+        if force_analyses and len(force_analyses) > 0:
+            analyses = force_analyses[:max_analyses]
+            return {
+                "agent": self.name,
+                "action": "analysis_plan",
+                "analyses": analyses,
+                "message": f"**Analysis Plan (User Override)**\n\n"
+                          f"Following your configuration, I will run {len(analyses)} analyses:\n"
+                          f"{chr(10).join([f'• {a.replace('_', ' ').title()}' for a in analyses])}\n\n"
+                          f"Beginning execution now..."
+            }, analyses
+        
+        # Otherwise use strategy-based decision
         strategy_type = strategy.get('type', 'generic')
         
         analysis_map = {
@@ -800,6 +815,9 @@ class DataScientistAgent:
         }
         
         analyses = analysis_map.get(strategy_type, ['sales_forecasting', 'revenue_impact'])
+        
+        # Limit to max_analyses
+        analyses = analyses[:max_analyses]
         
         return {
             "agent": self.name,
@@ -1533,6 +1551,75 @@ elif st.session_state.page == 'AI Agent':
     
     st.markdown("---")
     
+    # Agent Configuration Panel
+    with st.expander("⚙️ Agent Configuration", expanded=False):
+        st.markdown("**Control Agent Behavior**")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            max_iterations = st.number_input(
+                "Max Analyses per Strategy",
+                min_value=1,
+                max_value=10,
+                value=st.session_state.agent_config['analyses_per_strategy'],
+                help="Maximum number of analyses the Data Scientist Agent will run per strategy"
+            )
+            st.session_state.agent_config['analyses_per_strategy'] = max_iterations
+        
+        with col2:
+            max_strategies = st.number_input(
+                "Max Strategies to Generate",
+                min_value=1,
+                max_value=10,
+                value=4,
+                help="Number of strategies the Manager Agent will propose"
+            )
+            st.session_state.agent_config['max_iterations'] = max_strategies
+        
+        with col3:
+            timeout = st.number_input(
+                "Timeout (seconds)",
+                min_value=30,
+                max_value=600,
+                value=st.session_state.agent_config['timeout_seconds'],
+                help="Maximum time allowed for each analysis"
+            )
+            st.session_state.agent_config['timeout_seconds'] = timeout
+        
+        with col4:
+            enable_retry = st.checkbox(
+                "Enable Retry on Failure",
+                value=st.session_state.agent_config['enable_retry'],
+                help="Retry failed analyses automatically"
+            )
+            st.session_state.agent_config['enable_retry'] = enable_retry
+        
+        st.markdown("---")
+        
+        st.markdown("**Analysis Selection Override**")
+        st.caption("Leave empty to let agents decide, or select specific analyses to force")
+        
+        available_analyses = [
+            'churn_prediction',
+            'sales_forecasting',
+            'customer_lifetime_value',
+            'pricing_elasticity',
+            'segmentation_analysis',
+            'revenue_impact',
+            'geographic_analysis'
+        ]
+        
+        force_analyses = st.multiselect(
+            "Force these analyses (optional)",
+            options=available_analyses,
+            default=[],
+            help="Override agent decision and force these specific analyses"
+        )
+        st.session_state.agent_config['force_analyses'] = force_analyses
+    
+    st.markdown("---")
+    
     if not client:
         st.error("BigQuery required")
         st.stop()
@@ -1553,6 +1640,13 @@ elif st.session_state.page == 'AI Agent':
         st.session_state.manager_agent = ManagerAgent(gemini_model)
     if 'data_scientist_agent' not in st.session_state:
         st.session_state.data_scientist_agent = DataScientistAgent()
+    if 'agent_config' not in st.session_state:
+        st.session_state.agent_config = {
+            'max_iterations': 3,
+            'analyses_per_strategy': 3,
+            'enable_retry': True,
+            'timeout_seconds': 300
+        }
     
     # Helper function to display agent messages
     def display_agent_message(message):
@@ -1583,8 +1677,13 @@ elif st.session_state.page == 'AI Agent':
         """, unsafe_allow_html=True)
     
     if st.button("Start Agentic Workflow", type="primary", use_container_width=True):
-        # Clear previous messages
+        # Clear ALL previous state
         st.session_state.agent_messages = []
+        st.session_state.strategies_generated = []
+        st.session_state.selected_strategies = []
+        st.session_state.test_results = {}
+        
+        max_strats = st.session_state.agent_config.get('max_iterations', 4)
         
         with st.spinner("Manager Agent analyzing data..."):
             manager = GeminiStrategyManager(client, gemini_model)
@@ -1594,7 +1693,7 @@ elif st.session_state.page == 'AI Agent':
             intro_msg = {
                 "agent": "Manager Agent",
                 "action": "introduction",
-                "message": "**Manager Agent Initialized**\n\nHello! I'm analyzing your business data to identify strategic opportunities. Let me gather insights from BigQuery..."
+                "message": f"**Manager Agent Initialized**\n\nHello! I'm analyzing your business data to identify strategic opportunities. I'll generate up to {max_strats} strategies based on your configuration."
             }
             st.session_state.agent_messages.append(intro_msg)
             
@@ -1607,6 +1706,10 @@ elif st.session_state.page == 'AI Agent':
             st.session_state.agent_messages.append(analysis_msg)
             
             strategies = manager.generate_strategies(insights)
+            
+            # Limit strategies based on config
+            strategies = strategies[:max_strats]
+            
             st.session_state.strategies_generated = strategies
             
             # Manager Agent proposes strategies
@@ -1693,6 +1796,11 @@ elif st.session_state.page == 'AI Agent':
             
             with col1:
                 if st.button(f"Approve Testing ({len(st.session_state.selected_strategies)}/4)", type="primary", use_container_width=True):
+                    # Clear previous test results for selected strategies
+                    for strat_name in st.session_state.selected_strategies:
+                        if strat_name in st.session_state.test_results:
+                            del st.session_state.test_results[strat_name]
+                    
                     # Manager requests approval
                     approval_msg = st.session_state.manager_agent.request_approval(len(st.session_state.selected_strategies))
                     st.session_state.agent_messages.append(approval_msg)
@@ -1730,6 +1838,12 @@ elif st.session_state.page == 'AI Agent':
         st.markdown("---")
         st.header("Agents at Work")
         
+        # Show current configuration
+        st.info(f"**Configuration:** Running max {st.session_state.agent_config['analyses_per_strategy']} analyses per strategy | "
+                f"Timeout: {st.session_state.agent_config['timeout_seconds']}s | "
+                f"Retry: {'Enabled' if st.session_state.agent_config['enable_retry'] else 'Disabled'}" +
+                (f" | Forced Analyses: {', '.join(st.session_state.agent_config['force_analyses'])}" if st.session_state.agent_config.get('force_analyses') else ""))
+        
         # Show real-time agent messages
         message_container = st.container()
         with message_container:
@@ -1766,7 +1880,11 @@ elif st.session_state.page == 'AI Agent':
                     display_agent_message(ack_msg)
                     
                     # Data Scientist decides on analyses
-                    plan_msg, required_analyses = st.session_state.data_scientist_agent.decide_analyses(strategy)
+                    plan_msg, required_analyses = st.session_state.data_scientist_agent.decide_analyses(
+                        strategy,
+                        force_analyses=st.session_state.agent_config.get('force_analyses', []),
+                        max_analyses=st.session_state.agent_config.get('analyses_per_strategy', 3)
+                    )
                     st.session_state.agent_messages.append(plan_msg)
                     display_agent_message(plan_msg)
                     
@@ -1918,16 +2036,24 @@ elif st.session_state.page == 'AI Agent':
                                 st.pyplot(viz)
         
         st.markdown("---")
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             if st.button("Clear Results", use_container_width=True):
                 st.session_state.test_results = {}
                 st.rerun()
         with col2:
+            if st.button("Re-run Selected", use_container_width=True):
+                # Clear results and re-run
+                for strat_name in st.session_state.selected_strategies:
+                    if strat_name in st.session_state.test_results:
+                        del st.session_state.test_results[strat_name]
+                st.session_state.batch_testing = True
+                st.rerun()
+        with col3:
             if st.button("Test More", use_container_width=True):
                 st.session_state.selected_strategies = []
                 st.rerun()
-        with col3:
+        with col4:
             if st.button("New Strategies", use_container_width=True):
                 st.session_state.strategies_generated = []
                 st.session_state.selected_strategies = []
