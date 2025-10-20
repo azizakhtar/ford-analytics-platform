@@ -870,7 +870,6 @@ class DataScientistAgent:
                       f"• Ready for executive summary generation\n\n"
                       f"Reporting back to Manager Agent..."
         }
-
 # ============================================================================
 # LEGACY STRATEGY AGENT (kept for compatibility)
 # ============================================================================
