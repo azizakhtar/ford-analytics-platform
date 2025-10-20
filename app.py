@@ -542,13 +542,19 @@ CRITICAL RULES FOR BIGQUERY:
 2. Use backticks for table names: `ford-assessment-100425.ford_credit_raw.table_name`
 3. Always add LIMIT clause (default 100)
 
-4. GROUPING - ONLY when explicitly requested:
-   - If user explicitly says "by [column]" (e.g., "by vehicle model", "by state"), use GROUP BY that column
-   - If user says "by month" or "monthly", use GROUP BY DATE_TRUNC(DATE(sale_timestamp), MONTH)
-   - If user just says "average" or "total" WITHOUT "by", return ONE aggregate result
-   - Example: "average sale price" → SELECT AVG(sale_price) (no GROUP BY)
-   - Example: "average by model" → SELECT vehicle_model, AVG(sale_price) GROUP BY vehicle_model
-   - Example: "monthly average" → SELECT DATE_TRUNC(...), AVG(...) GROUP BY month
+4. GROUPING - recognize these phrases that require GROUP BY:
+   - "by [column]" → GROUP BY that column
+   - "for each [column]" → GROUP BY that column
+   - "per [column]" → GROUP BY that column
+   - "breakdown of/by [column]" → GROUP BY that column
+   - "each [column]" → GROUP BY that column
+   
+   Examples:
+   - "average price by vehicle" → SELECT vehicle_model, AVG(sale_price) GROUP BY vehicle_model
+   - "average price for each vehicle" → SELECT vehicle_model, AVG(sale_price) GROUP BY vehicle_model
+   - "average price per vehicle type" → SELECT vehicle_model, AVG(sale_price) GROUP BY vehicle_model
+   - "sales for each month" → SELECT DATE_TRUNC(...), COUNT(*) GROUP BY month
+   - Just "average price" with NO "by/for each/per" → SELECT AVG(sale_price) (no GROUP BY)
 
 5. TIMESTAMP DATE COMPARISONS:
    For TIMESTAMP columns like sale_timestamp, use THESE formats:
@@ -560,11 +566,6 @@ CRITICAL RULES FOR BIGQUERY:
    
    NEVER use INTERVAL X MONTH or INTERVAL X YEAR with TIMESTAMP_SUB
    ALWAYS convert months to days (1 month = 30 days, 6 months = 180 days, 1 year = 365 days)
-
-6. Be precise:
-   - "average for last 6 months" = ONE number (no GROUP BY)
-   - "monthly average for last 6 months" = multiple rows grouped by month
-   - "average by vehicle" = multiple rows grouped by vehicle
 
 Generate the SQL query now:
 """
