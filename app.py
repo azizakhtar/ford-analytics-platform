@@ -35,6 +35,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Initialize session state for agent_config
+if 'agent_config' not in st.session_state:
+    st.session_state.agent_config = {
+        'max_iterations': 3,
+        'analyses_per_strategy': 3,
+        'enable_retry': True,
+        'timeout_seconds': 300,
+        'force_analyses': []
+    }
+
 # Initialize Gemini
 try:
     genai.configure(api_key=st.secrets["gemini_api_key"])
@@ -1551,6 +1561,20 @@ elif st.session_state.page == 'AI Agent':
     
     st.markdown("---")
     
+    # Initialize other session state variables if needed
+    if 'strategies_generated' not in st.session_state:
+        st.session_state.strategies_generated = []
+    if 'test_results' not in st.session_state:
+        st.session_state.test_results = {}
+    if 'selected_strategies' not in st.session_state:
+        st.session_state.selected_strategies = []
+    if 'agent_messages' not in st.session_state:
+        st.session_state.agent_messages = []
+    if 'manager_agent' not in st.session_state:
+        st.session_state.manager_agent = ManagerAgent(gemini_model)
+    if 'data_scientist_agent' not in st.session_state:
+        st.session_state.data_scientist_agent = DataScientistAgent()
+    
     # Agent Configuration Panel
     with st.expander("⚙️ Agent Configuration", expanded=False):
         st.markdown("**Control Agent Behavior**")
@@ -1613,7 +1637,7 @@ elif st.session_state.page == 'AI Agent':
         force_analyses = st.multiselect(
             "Force these analyses (optional)",
             options=available_analyses,
-            default=[],
+            default=st.session_state.agent_config['force_analyses'],
             help="Override agent decision and force these specific analyses"
         )
         st.session_state.agent_config['force_analyses'] = force_analyses
@@ -1627,26 +1651,6 @@ elif st.session_state.page == 'AI Agent':
     if not gemini_model:
         st.error("Gemini not configured")
         st.stop()
-    
-    if 'strategies_generated' not in st.session_state:
-        st.session_state.strategies_generated = []
-    if 'test_results' not in st.session_state:
-        st.session_state.test_results = {}
-    if 'selected_strategies' not in st.session_state:
-        st.session_state.selected_strategies = []
-    if 'agent_messages' not in st.session_state:
-        st.session_state.agent_messages = []
-    if 'manager_agent' not in st.session_state:
-        st.session_state.manager_agent = ManagerAgent(gemini_model)
-    if 'data_scientist_agent' not in st.session_state:
-        st.session_state.data_scientist_agent = DataScientistAgent()
-    if 'agent_config' not in st.session_state:
-        st.session_state.agent_config = {
-            'max_iterations': 3,
-            'analyses_per_strategy': 3,
-            'enable_retry': True,
-            'timeout_seconds': 300
-        }
     
     # Helper function to display agent messages
     def display_agent_message(message):
