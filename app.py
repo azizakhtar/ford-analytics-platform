@@ -542,7 +542,13 @@ CRITICAL RULES FOR BIGQUERY:
 2. Use backticks for table names: `ford-assessment-100425.ford_credit_raw.table_name`
 3. Always add LIMIT clause (default 100)
 
-4. TIMESTAMP DATE COMPARISONS (VERY IMPORTANT):
+4. GROUPING (VERY IMPORTANT):
+   - If user says "by [something]" (e.g., "by car type", "by model", "by state"), ALWAYS use GROUP BY
+   - Example: "average by car type" → SELECT vehicle_model, AVG(sale_price) FROM ... GROUP BY vehicle_model
+   - Example: "count by state" → SELECT state, COUNT(*) FROM ... GROUP BY state
+   - Example: "sales by month" → SELECT DATE_TRUNC(sale_date, MONTH), COUNT(*) FROM ... GROUP BY 1
+
+5. TIMESTAMP DATE COMPARISONS:
    For TIMESTAMP columns like sale_timestamp, use THESE formats:
    
    - Last 6 months: WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 DAY)
@@ -553,15 +559,15 @@ CRITICAL RULES FOR BIGQUERY:
    NEVER use INTERVAL X MONTH or INTERVAL X YEAR with TIMESTAMP_SUB
    ALWAYS convert months to days (1 month = 30 days, 6 months = 180 days, 1 year = 365 days)
    
-5. For DATE columns (not TIMESTAMP), you can use:
+6. For DATE columns (not TIMESTAMP), you can use:
    - DATE_SUB(CURRENT_DATE(), INTERVAL 6 MONTH)
    - DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR)
 
-6. Common timestamp patterns:
-   - Recent: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-   - Last quarter: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 90 DAY)
-   - Last 6 months: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 DAY)
-   - Last year: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 365 DAY)
+7. Common patterns:
+   - "average by X" → SELECT X, AVG(...) GROUP BY X
+   - "count by X" → SELECT X, COUNT(*) GROUP BY X
+   - "total by X" → SELECT X, SUM(...) GROUP BY X
+   - "breakdown by X" → SELECT X, COUNT(*), AVG(...) GROUP BY X
 
 Generate the SQL query now:
 """
