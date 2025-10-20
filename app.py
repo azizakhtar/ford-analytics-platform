@@ -537,10 +537,18 @@ class GeminiSQLGenerator:
 
 USER REQUEST: {natural_language}
 
-RULES:
+CRITICAL RULES:
 1. Return ONLY the SQL query, no explanation
 2. Use backticks for table names: `ford-assessment-100425.ford_credit_raw.table_name`
 3. Always add LIMIT clause (default 100)
+4. For TIMESTAMP columns (like sale_timestamp), use TIMESTAMP_SUB and CURRENT_TIMESTAMP():
+   - Example: WHERE sale_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 6 MONTH)
+5. For DATE columns, use DATE_SUB and CURRENT_DATE()
+6. Never mix DATE and TIMESTAMP in comparisons without proper casting
+7. Common timestamp comparisons:
+   - Last 6 months: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 6 MONTH)
+   - Last year: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 YEAR)
+   - Last 30 days: TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 
 Generate the SQL query now:
 """
@@ -1311,6 +1319,11 @@ elif st.session_state.page == 'SQL Chat':
     st.title("SQL Generator (Powered by Gemini)")
     st.markdown("Natural Language to SQL")
     
+    st.info("""
+    **Tip:** For time-based queries on timestamp columns, the generator will automatically use 
+    `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), ...)` format for proper date comparisons.
+    """)
+    
     if not gemini_model:
         st.error("Gemini not configured")
         st.stop()
@@ -1336,13 +1349,62 @@ elif st.session_state.page == 'SQL Chat':
     with col2:
         st.subheader("Options")
         auto_execute = st.checkbox("Auto-execute", value=True)
+        
+        with st.expander("Example Queries"):
+            st.markdown("""
+            **Basic Queries:**
+            - Show all F-150 sales
+            - Average sale price by vehicle model
+            - Count customers by credit tier
+            
+            **Time-based Queries:**
+            - Sales in the last 6 months
+            - Top 10 customers by total purchases
+            - Monthly sales trends
+            
+            **Advanced:**
+            - Customers with multiple vehicles
+            - High-value transactions over $50,000
+            - Sales by state and vehicle type
+            """)
+        
+        with st.expander("View Database Schema"):
+            if st.button("Load Schema"):
+                sql_gen = GeminiSQLGenerator(client, gemini_model)
+                schema = sql_gen.get_database_schema()
+                st.text(schema)
     
     if hasattr(st.session_state, 'generated_sql'):
         st.markdown("---")
         st.subheader("Generated SQL")
+        
+        # Allow editing
+        edited_sql = st.text_area(
+            "Edit SQL if needed:",
+            value=st.session_state.generated_sql,
+            height=150,
+            key="sql_editor"
+        )
+        
+        if edited_sql != st.session_state.generated_sql:
+            st.session_state.generated_sql = edited_sql
+        
         st.code(st.session_state.generated_sql, language='sql')
         
-        if auto_execute or st.button("Execute Query"):
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            execute_btn = st.button("Execute Query", type="primary")
+        with col2:
+            if st.button("Fix Common Errors"):
+                # Auto-fix common timestamp issues
+                fixed_sql = st.session_state.generated_sql.replace(
+                    "DATE_SUB(CURRENT_DATE()",
+                    "TIMESTAMP_SUB(CURRENT_TIMESTAMP()"
+                )
+                st.session_state.generated_sql = fixed_sql
+                st.rerun()
+        
+        if auto_execute or execute_btn:
             with st.spinner("Executing..."):
                 try:
                     query_job = client.query(st.session_state.generated_sql)
@@ -1358,7 +1420,24 @@ elif st.session_state.page == 'SQL Chat':
                     else:
                         st.warning("No results")
                 except Exception as e:
-                    st.error(f"Query failed: {e}")
+                    error_msg = str(e)
+                    st.error(f"Query failed: {error_msg}")
+                    
+                    # Provide helpful suggestions
+                    if "No matching signature" in error_msg and ("TIMESTAMP" in error_msg or "DATE" in error_msg):
+                        st.info("""
+                        **Common Fix for TIMESTAMP/DATE errors:**
+                        
+                        If comparing timestamp columns, use:
+                        - `TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL X MONTH)` instead of
+                        - `DATE_SUB(CURRENT_DATE(), INTERVAL X MONTH)`
+                        
+                        Click the "Fix Common Errors" button above or edit the SQL manually.
+                        """)
+                    elif "Unrecognized name" in error_msg:
+                        st.info("**Column not found.** Check the schema for correct column names.")
+                    elif "Syntax error" in error_msg:
+                        st.info("**Syntax error detected.** Review SQL syntax, especially quotes and commas.")
 
 # ============================================================================
 # AGENTIC AI SYSTEM PAGE - HUMAN-IN-THE-LOOP
@@ -1837,7 +1916,7 @@ elif st.session_state.page == 'AI Agent':
         """)
 
 # ============================================================================
-# AGENT EVALUATION PAGE (unchanged)
+# AGENT EVALUATION PAGE (keeping from original - no changes needed)
 # ============================================================================
 
 elif st.session_state.page == 'Agent Evaluation':
