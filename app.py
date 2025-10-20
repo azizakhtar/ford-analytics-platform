@@ -542,11 +542,13 @@ CRITICAL RULES FOR BIGQUERY:
 2. Use backticks for table names: `ford-assessment-100425.ford_credit_raw.table_name`
 3. Always add LIMIT clause (default 100)
 
-4. GROUPING (VERY IMPORTANT):
-   - If user says "by [something]" (e.g., "by car type", "by model", "by state"), ALWAYS use GROUP BY
-   - Example: "average by car type" → SELECT vehicle_model, AVG(sale_price) FROM ... GROUP BY vehicle_model
-   - Example: "count by state" → SELECT state, COUNT(*) FROM ... GROUP BY state
-   - Example: "sales by month" → SELECT DATE_TRUNC(sale_date, MONTH), COUNT(*) FROM ... GROUP BY 1
+4. GROUPING - ONLY when explicitly requested:
+   - If user explicitly says "by [column]" (e.g., "by vehicle model", "by state"), use GROUP BY that column
+   - If user says "by month" or "monthly", use GROUP BY DATE_TRUNC(DATE(sale_timestamp), MONTH)
+   - If user just says "average" or "total" WITHOUT "by", return ONE aggregate result
+   - Example: "average sale price" → SELECT AVG(sale_price) (no GROUP BY)
+   - Example: "average by model" → SELECT vehicle_model, AVG(sale_price) GROUP BY vehicle_model
+   - Example: "monthly average" → SELECT DATE_TRUNC(...), AVG(...) GROUP BY month
 
 5. TIMESTAMP DATE COMPARISONS:
    For TIMESTAMP columns like sale_timestamp, use THESE formats:
@@ -558,16 +560,11 @@ CRITICAL RULES FOR BIGQUERY:
    
    NEVER use INTERVAL X MONTH or INTERVAL X YEAR with TIMESTAMP_SUB
    ALWAYS convert months to days (1 month = 30 days, 6 months = 180 days, 1 year = 365 days)
-   
-6. For DATE columns (not TIMESTAMP), you can use:
-   - DATE_SUB(CURRENT_DATE(), INTERVAL 6 MONTH)
-   - DATE_SUB(CURRENT_DATE(), INTERVAL 1 YEAR)
 
-7. Common patterns:
-   - "average by X" → SELECT X, AVG(...) GROUP BY X
-   - "count by X" → SELECT X, COUNT(*) GROUP BY X
-   - "total by X" → SELECT X, SUM(...) GROUP BY X
-   - "breakdown by X" → SELECT X, COUNT(*), AVG(...) GROUP BY X
+6. Be precise:
+   - "average for last 6 months" = ONE number (no GROUP BY)
+   - "monthly average for last 6 months" = multiple rows grouped by month
+   - "average by vehicle" = multiple rows grouped by vehicle
 
 Generate the SQL query now:
 """
