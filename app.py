@@ -1034,7 +1034,7 @@ class AnalysisEngine:
         except Exception as e:
             return self._mock_churn_analysis(strategy)
     
-def analyze_pricing_elasticity(self, strategy):
+    def analyze_pricing_elasticity(self, strategy):
     """Improved pricing elasticity analysis using log-log regression"""
     try:
         # Get more granular data - round to $100 instead of $1000
