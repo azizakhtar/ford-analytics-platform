@@ -1035,151 +1035,151 @@ class AnalysisEngine:
             return self._mock_churn_analysis(strategy)
     
     def analyze_pricing_elasticity(self, strategy):
-    """Improved pricing elasticity analysis using log-log regression"""
-    try:
-        # Get more granular data - round to $100 instead of $1000
-        query = """
-        SELECT 
-            ROUND(sale_price, -2) as price_bucket,
-            COUNT(*) as volume
-        FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
-        WHERE sale_price BETWEEN 15000 AND 80000
-        GROUP BY price_bucket
-        HAVING volume > 3
-        ORDER BY price_bucket
-        """
-        
-        df = self.client.query(query).to_dataframe()
-        
-        if len(df) < 15:
+        """Improved pricing elasticity analysis using log-log regression"""
+        try:
+            # Get more granular data - round to $100 instead of $1000
+            query = """
+            SELECT 
+                ROUND(sale_price, -2) as price_bucket,
+                COUNT(*) as volume
+            FROM `ford-assessment-100425.ford_credit_raw.consumer_sales`
+            WHERE sale_price BETWEEN 15000 AND 80000
+            GROUP BY price_bucket
+            HAVING volume > 3
+            ORDER BY price_bucket
+            """
+            
+            df = self.client.query(query).to_dataframe()
+            
+            if len(df) < 15:
+                return self._mock_pricing_analysis(strategy)
+            
+            # Remove outliers using IQR method
+            Q1 = df['volume'].quantile(0.25)
+            Q3 = df['volume'].quantile(0.75)
+            IQR = Q3 - Q1
+            df_clean = df[(df['volume'] >= Q1 - 1.5*IQR) & (df['volume'] <= Q3 + 1.5*IQR)]
+            
+            if len(df_clean) < 10:
+                df_clean = df
+            
+            # Log-log regression - coefficient IS the elasticity
+            df_clean['log_price'] = np.log(df_clean['price_bucket'])
+            df_clean['log_volume'] = np.log(df_clean['volume'])
+            
+            X_log = df_clean['log_price'].values.reshape(-1, 1)
+            y_log = df_clean['log_volume'].values
+            
+            model_log = LinearRegression()
+            model_log.fit(X_log, y_log)
+            
+            elasticity = model_log.coef_[0]
+            r2_log = r2_score(y_log, model_log.predict(X_log))
+            
+            # Standard linear for visualization
+            X = df_clean['price_bucket'].values.reshape(-1, 1)
+            y = df_clean['volume'].values
+            
+            model = LinearRegression()
+            model.fit(X, y)
+            y_pred = model.predict(X)
+            r2 = r2_score(y, y_pred)
+            
+            # Calculate point elasticity: (dQ/dP) * (P/Q)
+            mean_price = df_clean['price_bucket'].mean()
+            mean_volume = df_clean['volume'].mean()
+            dQ_dP = model.coef_[0]
+            point_elasticity = dQ_dP * (mean_price / mean_volume)
+            
+            # Visualization
+            fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
+            
+            # Demand curve
+            ax1.scatter(df_clean['price_bucket'], df_clean['volume'], s=100, alpha=0.6, color='blue')
+            ax1.plot(df_clean['price_bucket'], y_pred, 'r-', linewidth=2, label=f'Linear R²={r2:.3f}')
+            ax1.set_xlabel('Price ($)', fontsize=11)
+            ax1.set_ylabel('Sales Volume', fontsize=11)
+            ax1.set_title('Demand Curve', fontsize=14, fontweight='bold')
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+            
+            # Log-log elasticity
+            ax2.scatter(df_clean['log_price'], df_clean['log_volume'], s=100, alpha=0.6, color='green')
+            y_log_pred = model_log.predict(X_log)
+            ax2.plot(df_clean['log_price'], y_log_pred, 'r-', linewidth=2, 
+                    label=f'Elasticity={elasticity:.3f}\nR²={r2_log:.3f}')
+            ax2.set_xlabel('Log(Price)', fontsize=11)
+            ax2.set_ylabel('Log(Volume)', fontsize=11)
+            ax2.set_title('Log-Log Elasticity Model', fontsize=14, fontweight='bold')
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+            
+            # Price distribution
+            ax3.hist(df_clean['price_bucket'], bins=30, color='purple', alpha=0.7, edgecolor='black')
+            ax3.axvline(mean_price, color='red', linestyle='--', linewidth=2, label=f'Mean: ${mean_price:,.0f}')
+            ax3.set_xlabel('Price ($)', fontsize=11)
+            ax3.set_ylabel('Frequency', fontsize=11)
+            ax3.set_title('Price Distribution', fontsize=14, fontweight='bold')
+            ax3.legend()
+            ax3.grid(True, alpha=0.3)
+            
+            # Volume by price range
+            price_ranges = ['15-25K', '25-35K', '35-45K', '45-55K', '55K+']
+            df_clean['range'] = pd.cut(df_clean['price_bucket'], 
+                                       bins=[15000, 25000, 35000, 45000, 55000, 100000], 
+                                       labels=price_ranges)
+            range_sales = df_clean.groupby('range', observed=True)['volume'].sum()
+            
+            bars = ax4.bar(range_sales.index, range_sales.values, color='orange', alpha=0.7, edgecolor='black')
+            ax4.set_xlabel('Price Range', fontsize=11)
+            ax4.set_ylabel('Total Sales', fontsize=11)
+            ax4.set_title('Sales by Price Range', fontsize=14, fontweight='bold')
+            ax4.grid(True, alpha=0.3, axis='y')
+            
+            for bar in bars:
+                height = bar.get_height()
+                ax4.text(bar.get_x() + bar.get_width()/2., height,
+                        f'{int(height)}', ha='center', va='bottom', fontsize=9)
+            
+            plt.tight_layout()
+            
+            # Interpret elasticity
+            if abs(elasticity) > 1:
+                elasticity_type = "Elastic (price-sensitive)"
+                interpretation = "1% price change causes >1% volume change"
+            elif abs(elasticity) > 0.5:
+                elasticity_type = "Moderately elastic"
+                interpretation = "Moderate price sensitivity"
+            elif abs(elasticity) > 0.1:
+                elasticity_type = "Inelastic (price-insensitive)"
+                interpretation = "1% price change causes <1% volume change"
+            else:
+                elasticity_type = "Highly inelastic"
+                interpretation = "Very low price sensitivity"
+            
+            # Build executive summary
+            summary = (f"Price elasticity of {elasticity:.3f} indicates {elasticity_type.lower()}. "
+                      f"{interpretation}. Log-log model R²={r2_log:.3f}. "
+                      f"Point elasticity at mean price (${mean_price:,.0f}): {point_elasticity:.3f}. "
+                      f"{strategy.get('impact', 'Strategy shows potential for revenue optimization')}")
+            
+            return {
+                "analysis_type": "PRICING ELASTICITY",
+                "executive_summary": summary,
+                "key_metrics": {
+                    "Price Elasticity": f"{elasticity:.3f}",
+                    "Elasticity Type": elasticity_type,
+                    "Log Model R²": f"{r2_log:.3f}",
+                    "Point Elasticity": f"{point_elasticity:.3f}",
+                    "Mean Price": f"${mean_price:,.0f}",
+                    "Data Points": f"{len(df_clean)}",
+                    "Impact": strategy.get('impact', 'TBD')
+                },
+                "visualizations": [fig]
+            }
+            
+        except Exception as e:
             return self._mock_pricing_analysis(strategy)
-        
-        # Remove outliers using IQR method
-        Q1 = df['volume'].quantile(0.25)
-        Q3 = df['volume'].quantile(0.75)
-        IQR = Q3 - Q1
-        df_clean = df[(df['volume'] >= Q1 - 1.5*IQR) & (df['volume'] <= Q3 + 1.5*IQR)]
-        
-        if len(df_clean) < 10:
-            df_clean = df
-        
-        # Log-log regression - coefficient IS the elasticity
-        df_clean['log_price'] = np.log(df_clean['price_bucket'])
-        df_clean['log_volume'] = np.log(df_clean['volume'])
-        
-        X_log = df_clean['log_price'].values.reshape(-1, 1)
-        y_log = df_clean['log_volume'].values
-        
-        model_log = LinearRegression()
-        model_log.fit(X_log, y_log)
-        
-        elasticity = model_log.coef_[0]
-        r2_log = r2_score(y_log, model_log.predict(X_log))
-        
-        # Standard linear for visualization
-        X = df_clean['price_bucket'].values.reshape(-1, 1)
-        y = df_clean['volume'].values
-        
-        model = LinearRegression()
-        model.fit(X, y)
-        y_pred = model.predict(X)
-        r2 = r2_score(y, y_pred)
-        
-        # Calculate point elasticity: (dQ/dP) * (P/Q)
-        mean_price = df_clean['price_bucket'].mean()
-        mean_volume = df_clean['volume'].mean()
-        dQ_dP = model.coef_[0]
-        point_elasticity = dQ_dP * (mean_price / mean_volume)
-        
-        # Visualization
-        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
-        
-        # Demand curve
-        ax1.scatter(df_clean['price_bucket'], df_clean['volume'], s=100, alpha=0.6, color='blue')
-        ax1.plot(df_clean['price_bucket'], y_pred, 'r-', linewidth=2, label=f'Linear R²={r2:.3f}')
-        ax1.set_xlabel('Price ($)', fontsize=11)
-        ax1.set_ylabel('Sales Volume', fontsize=11)
-        ax1.set_title('Demand Curve', fontsize=14, fontweight='bold')
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
-        
-        # Log-log elasticity
-        ax2.scatter(df_clean['log_price'], df_clean['log_volume'], s=100, alpha=0.6, color='green')
-        y_log_pred = model_log.predict(X_log)
-        ax2.plot(df_clean['log_price'], y_log_pred, 'r-', linewidth=2, 
-                label=f'Elasticity={elasticity:.3f}\nR²={r2_log:.3f}')
-        ax2.set_xlabel('Log(Price)', fontsize=11)
-        ax2.set_ylabel('Log(Volume)', fontsize=11)
-        ax2.set_title('Log-Log Elasticity Model', fontsize=14, fontweight='bold')
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
-        
-        # Price distribution
-        ax3.hist(df_clean['price_bucket'], bins=30, color='purple', alpha=0.7, edgecolor='black')
-        ax3.axvline(mean_price, color='red', linestyle='--', linewidth=2, label=f'Mean: ${mean_price:,.0f}')
-        ax3.set_xlabel('Price ($)', fontsize=11)
-        ax3.set_ylabel('Frequency', fontsize=11)
-        ax3.set_title('Price Distribution', fontsize=14, fontweight='bold')
-        ax3.legend()
-        ax3.grid(True, alpha=0.3)
-        
-        # Volume by price range
-        price_ranges = ['15-25K', '25-35K', '35-45K', '45-55K', '55K+']
-        df_clean['range'] = pd.cut(df_clean['price_bucket'], 
-                                   bins=[15000, 25000, 35000, 45000, 55000, 100000], 
-                                   labels=price_ranges)
-        range_sales = df_clean.groupby('range', observed=True)['volume'].sum()
-        
-        bars = ax4.bar(range_sales.index, range_sales.values, color='orange', alpha=0.7, edgecolor='black')
-        ax4.set_xlabel('Price Range', fontsize=11)
-        ax4.set_ylabel('Total Sales', fontsize=11)
-        ax4.set_title('Sales by Price Range', fontsize=14, fontweight='bold')
-        ax4.grid(True, alpha=0.3, axis='y')
-        
-        for bar in bars:
-            height = bar.get_height()
-            ax4.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{int(height)}', ha='center', va='bottom', fontsize=9)
-        
-        plt.tight_layout()
-        
-        # Interpret elasticity
-        if abs(elasticity) > 1:
-            elasticity_type = "Elastic (price-sensitive)"
-            interpretation = "1% price change causes >1% volume change"
-        elif abs(elasticity) > 0.5:
-            elasticity_type = "Moderately elastic"
-            interpretation = "Moderate price sensitivity"
-        elif abs(elasticity) > 0.1:
-            elasticity_type = "Inelastic (price-insensitive)"
-            interpretation = "1% price change causes <1% volume change"
-        else:
-            elasticity_type = "Highly inelastic"
-            interpretation = "Very low price sensitivity"
-        
-        # Build executive summary
-        summary = (f"Price elasticity of {elasticity:.3f} indicates {elasticity_type.lower()}. "
-                  f"{interpretation}. Log-log model R²={r2_log:.3f}. "
-                  f"Point elasticity at mean price (${mean_price:,.0f}): {point_elasticity:.3f}. "
-                  f"{strategy.get('impact', 'Strategy shows potential for revenue optimization')}")
-        
-        return {
-            "analysis_type": "PRICING ELASTICITY",
-            "executive_summary": summary,
-            "key_metrics": {
-                "Price Elasticity": f"{elasticity:.3f}",
-                "Elasticity Type": elasticity_type,
-                "Log Model R²": f"{r2_log:.3f}",
-                "Point Elasticity": f"{point_elasticity:.3f}",
-                "Mean Price": f"${mean_price:,.0f}",
-                "Data Points": f"{len(df_clean)}",
-                "Impact": strategy.get('impact', 'TBD')
-            },
-            "visualizations": [fig]
-        }
-        
-    except Exception as e:
-        return self._mock_pricing_analysis(strategy)
     
     def analyze_customer_segmentation(self, strategy):
         try:
