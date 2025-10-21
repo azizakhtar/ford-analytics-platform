@@ -35,16 +35,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state for agent_config
-if 'agent_config' not in st.session_state:
-    st.session_state.agent_config = {
-        'max_iterations': 3,
-        'analyses_per_strategy': 3,
-        'enable_retry': True,
-        'timeout_seconds': 300,
-        'force_analyses': []
-    }
-
 # Initialize Gemini
 try:
     genai.configure(api_key=st.secrets["gemini_api_key"])
@@ -870,6 +860,7 @@ class DataScientistAgent:
                       f"• Ready for executive summary generation\n\n"
                       f"Reporting back to Manager Agent..."
         }
+
 # ============================================================================
 # LEGACY STRATEGY AGENT (kept for compatibility)
 # ============================================================================
@@ -1537,6 +1528,28 @@ elif st.session_state.page == 'SQL Chat':
 elif st.session_state.page == 'AI Agent':
     client = get_bigquery_client()
     
+    # Initialize session state variables FIRST, before any UI elements
+    if 'agent_config' not in st.session_state:
+        st.session_state.agent_config = {
+            'max_iterations': 4,
+            'analyses_per_strategy': 3,
+            'enable_retry': True,
+            'timeout_seconds': 300,
+            'force_analyses': []
+        }
+    if 'strategies_generated' not in st.session_state:
+        st.session_state.strategies_generated = []
+    if 'test_results' not in st.session_state:
+        st.session_state.test_results = {}
+    if 'selected_strategies' not in st.session_state:
+        st.session_state.selected_strategies = []
+    if 'agent_messages' not in st.session_state:
+        st.session_state.agent_messages = []
+    if 'manager_agent' not in st.session_state:
+        st.session_state.manager_agent = ManagerAgent(gemini_model)
+    if 'data_scientist_agent' not in st.session_state:
+        st.session_state.data_scientist_agent = DataScientistAgent()
+    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.image("https://raw.githubusercontent.com/azizakhtar/ford-analytics-platform/main/transparent.png", width=300)
@@ -1559,20 +1572,6 @@ elif st.session_state.page == 'AI Agent':
         st.markdown("Runs analysis & generates insights")
     
     st.markdown("---")
-    
-    # Initialize other session state variables if needed
-    if 'strategies_generated' not in st.session_state:
-        st.session_state.strategies_generated = []
-    if 'test_results' not in st.session_state:
-        st.session_state.test_results = {}
-    if 'selected_strategies' not in st.session_state:
-        st.session_state.selected_strategies = []
-    if 'agent_messages' not in st.session_state:
-        st.session_state.agent_messages = []
-    if 'manager_agent' not in st.session_state:
-        st.session_state.manager_agent = ManagerAgent(gemini_model)
-    if 'data_scientist_agent' not in st.session_state:
-        st.session_state.data_scientist_agent = DataScientistAgent()
     
     # Agent Configuration Panel
     with st.expander("⚙️ Agent Configuration", expanded=False):
@@ -1636,7 +1635,7 @@ elif st.session_state.page == 'AI Agent':
         force_analyses = st.multiselect(
             "Force these analyses (optional)",
             options=available_analyses,
-            default=st.session_state.agent_config['force_analyses'],
+            default=[],
             help="Override agent decision and force these specific analyses"
         )
         st.session_state.agent_config['force_analyses'] = force_analyses
@@ -2109,7 +2108,7 @@ elif st.session_state.page == 'AI Agent':
         """)
 
 # ============================================================================
-# AGENT EVALUATION PAGE (keeping from original - no changes needed)
+# AGENT EVALUATION PAGE
 # ============================================================================
 
 elif st.session_state.page == 'Agent Evaluation':
